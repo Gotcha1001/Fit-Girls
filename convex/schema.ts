@@ -1,0 +1,262 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+// Shared gender/preference vocabulary used on profiles.
+const genderValidator = v.union(
+  v.literal("male"),
+  v.literal("female"),
+  v.literal("non_binary"),
+);
+
+export default defineSchema({
+  // ───────────── EXISTING DATING TABLES (kept) ─────────────
+
+  users: defineTable({
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    imageUrl: v.optional(v.string()),
+    // CHANGED: added "host". "user" stays as the guest role.
+    role: v.union(v.literal("admin"), v.literal("user"), v.literal("host")),
+    createdAt: v.number(),
+    // NEW: set by /verify-age, enforced in the booking mutation
+    ageConfirmedAt: v.optional(v.number()),
+    appearance: v.optional(
+      v.object({
+        accent: v.string(),
+        rainMode: v.string(),
+        rainDensity: v.number(),
+        rainSpeed: v.number(),
+        rainOpacity: v.number(),
+        glow: v.boolean(),
+      }),
+    ),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_role", ["role"]), // NEW: first-admin check
+
+  profiles: defineTable({
+    userId: v.id("users"),
+    displayName: v.string(),
+    age: v.number(),
+    gender: genderValidator,
+    seekingGenders: v.array(genderValidator),
+    bio: v.string(),
+    photos: v.array(v.object({ url: v.string(), publicId: v.string() })),
+    city: v.string(),
+    latitude: v.number(),
+    longitude: v.number(),
+    coins: v.number(),
+    isOnboarded: v.boolean(),
+    lastActiveAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_gender", ["gender"]),
+
+  conversations: defineTable({
+    userAId: v.id("users"),
+    userBId: v.id("users"),
+    lastMessageAt: v.number(),
+    lastMessagePreview: v.optional(v.string()),
+    hiddenFor: v.optional(v.array(v.id("users"))),
+  })
+    .index("by_userA", ["userAId"])
+    .index("by_userB", ["userBId"])
+    .index("by_pair", ["userAId", "userBId"]),
+
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    senderId: v.id("users"),
+    body: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+    deletedFor: v.optional(v.array(v.id("users"))),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_conversation_unread", ["conversationId", "readAt"]),
+
+  giftTransactions: defineTable({
+    fromUserId: v.id("users"),
+    toUserId: v.id("users"),
+    giftId: v.string(),
+    coinCost: v.number(),
+    message: v.optional(v.string()),
+    createdAt: v.number(),
+    seenAt: v.optional(v.number()),
+  })
+    .index("by_recipient", ["toUserId"])
+    .index("by_sender", ["fromUserId"])
+    .index("by_recipient_unseen", ["toUserId", "seenAt"]),
+
+  uploadedAssets: defineTable({
+    userId: v.id("users"),
+    publicId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_public_id", ["publicId"])
+    .index("by_user", ["userId"]),
+
+  // SHARED by dating call requests AND paid bookings.
+  // A paid booking creates a row with requesterId = guest, recipientId = host's
+  // user, status "accepted", scheduledFor = booking start, and bookingId set.
+  callSessions: defineTable({
+    requesterId: v.id("users"),
+    recipientId: v.id("users"),
+    roomName: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+      v.literal("ended"),
+    ),
+    scheduledFor: v.optional(v.number()),
+    createdAt: v.number(),
+    bookingId: v.optional(v.id("bookings")), // NEW
+  })
+    .index("by_recipient", ["recipientId"])
+    .index("by_requester", ["requesterId"])
+    .index("by_recipient_status", ["recipientId", "status"])
+    .index("by_booking", ["bookingId"]), // NEW
+
+  likes: defineTable({
+    fromUserId: v.id("users"),
+    toUserId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_sender", ["fromUserId"])
+    .index("by_recipient", ["toUserId"])
+    .index("by_pair", ["fromUserId", "toUserId"]),
+
+  tokenPurchases: defineTable({
+    userId: v.id("users"),
+    packageId: v.string(),
+    tokens: v.number(),
+    priceCents: v.number(),
+    status: v.union(v.literal("pending"), v.literal("paid")),
+    createdAt: v.number(),
+    paidAt: v.optional(v.number()),
+    payfastPaymentId: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_payfastPaymentId", ["payfastPaymentId"]),
+
+  failedPayments: defineTable({
+    paymentId: v.string(),
+    purchaseId: v.optional(v.id("tokenPurchases")),
+    status: v.string(),
+    amount: v.number(),
+    reason: v.string(),
+    timestamp: v.number(),
+    resolved: v.boolean(),
+  }),
+
+  // ───────────── NEW MARKETPLACE TABLES ─────────────
+
+  hosts: defineTable({
+    userId: v.id("users"),
+    displayName: v.string(),
+    bio: v.string(),
+    avatarId: v.optional(v.id("_storage")),
+    ratePerMinuteCents: v.number(),
+    minMinutes: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("suspended"),
+    ),
+    kycStatus: v.union(
+      v.literal("none"),
+      v.literal("submitted"),
+      v.literal("verified"),
+    ),
+    payoutProvider: v.string(), // "paystack"
+    payoutAccountRef: v.optional(v.string()), // Paystack subaccount code
+    bankLast4: v.optional(v.string()),
+    isOnline: v.boolean(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"]),
+
+  availability: defineTable({
+    hostId: v.id("hosts"),
+    startsAt: v.number(),
+    endsAt: v.number(),
+  }).index("by_host_time", ["hostId", "startsAt"]),
+
+  bookings: defineTable({
+    hostId: v.id("hosts"),
+    guestId: v.id("users"),
+    startsAt: v.number(),
+    endsAt: v.optional(v.number()),
+    minutes: v.number(),
+    amountCents: v.number(),
+    platformFeeCents: v.number(),
+    hostShareCents: v.number(),
+    status: v.union(
+      v.literal("pending_payment"),
+      v.literal("paid"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+      v.literal("refunded"),
+    ),
+    paymentId: v.optional(v.id("payments")),
+    roomName: v.optional(v.string()),
+  })
+    .index("by_host", ["hostId"])
+    .index("by_host_time", ["hostId", "startsAt"])
+    .index("by_guest", ["guestId"]),
+
+  galleryItems: defineTable({
+    hostId: v.id("hosts"),
+    storageId: v.id("_storage"),
+    previewStorageId: v.id("_storage"), // blurred version, public
+    priceCents: v.number(),
+    caption: v.optional(v.string()),
+    moderation: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+  }).index("by_host", ["hostId"]),
+
+  purchases: defineTable({
+    galleryItemId: v.id("galleryItems"),
+    buyerId: v.id("users"),
+    paymentId: v.id("payments"),
+  })
+    .index("by_buyer", ["buyerId"])
+    .index("by_item_buyer", ["galleryItemId", "buyerId"]),
+
+  payments: defineTable({
+    kind: v.union(v.literal("booking"), v.literal("gallery")),
+    refId: v.string(),
+    payerId: v.id("users"),
+    hostId: v.id("hosts"),
+    amountCents: v.number(),
+    platformFeeCents: v.number(),
+    hostShareCents: v.number(),
+    currency: v.string(),
+    providerReference: v.string(),
+    status: v.union(
+      v.literal("initiated"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("refunded"),
+    ),
+  })
+    .index("by_reference", ["providerReference"])
+    .index("by_payer", ["payerId"]),
+
+  blocks: defineTable({
+    hostId: v.id("hosts"),
+    blockedUserId: v.id("users"),
+  }).index("by_host_user", ["hostId", "blockedUserId"]),
+
+  reports: defineTable({
+    reporterId: v.id("users"),
+    targetUserId: v.id("users"),
+    reason: v.string(),
+    resolved: v.boolean(),
+  }),
+});

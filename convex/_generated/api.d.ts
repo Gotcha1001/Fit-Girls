@@ -1,0 +1,85 @@
+/* eslint-disable */
+/**
+ * Generated `api` utility.
+ *
+ * THIS CODE IS AUTOMATICALLY GENERATED.
+ *
+ * To regenerate, run `npx convex dev`.
+ * @module
+ */
+
+import type * as ageVerification from "../ageVerification.js";
+import type * as assets from "../assets.js";
+import type * as bookings from "../bookings.js";
+import type * as calls from "../calls.js";
+import type * as gallery from "../gallery.js";
+import type * as gifts from "../gifts.js";
+import type * as hostPayout from "../hostPayout.js";
+import type * as hosts from "../hosts.js";
+import type * as http from "../http.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_geo from "../lib/geo.js";
+import type * as likes from "../likes.js";
+import type * as messages from "../messages.js";
+import type * as notifications from "../notifications.js";
+import type * as payments from "../payments.js";
+import type * as profiles from "../profiles.js";
+import type * as tokens from "../tokens.js";
+import type * as uploads from "../uploads.js";
+import type * as user from "../user.js";
+
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+
+declare const fullApi: ApiFromModules<{
+  ageVerification: typeof ageVerification;
+  assets: typeof assets;
+  bookings: typeof bookings;
+  calls: typeof calls;
+  gallery: typeof gallery;
+  gifts: typeof gifts;
+  hostPayout: typeof hostPayout;
+  hosts: typeof hosts;
+  http: typeof http;
+  "lib/auth": typeof lib_auth;
+  "lib/geo": typeof lib_geo;
+  likes: typeof likes;
+  messages: typeof messages;
+  notifications: typeof notifications;
+  payments: typeof payments;
+  profiles: typeof profiles;
+  tokens: typeof tokens;
+  uploads: typeof uploads;
+  user: typeof user;
+}>;
+
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
+export declare const api: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "public">
+>;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
+export declare const internal: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "internal">
+>;
+
+export declare const components: {};
