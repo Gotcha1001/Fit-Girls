@@ -68,21 +68,6 @@ export const getMe = query({
   },
 });
 
-// Called from /verify-age. Server records the timestamp; booking mutation enforces it.
-export const confirmAge = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
-    const me = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .first();
-    if (!me) throw new Error("User not found");
-    await ctx.db.patch(me._id, { ageConfirmedAt: Date.now() });
-  },
-});
-
 export const setAppearance = mutation({
   args: {
     appearance: v.object({

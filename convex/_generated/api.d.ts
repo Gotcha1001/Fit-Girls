@@ -8,9 +8,11 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as ageVerification from "../ageVerification.js";
 import type * as assets from "../assets.js";
 import type * as bookings from "../bookings.js";
+import type * as callAccess from "../callAccess.js";
 import type * as calls from "../calls.js";
 import type * as gallery from "../gallery.js";
 import type * as gifts from "../gifts.js";
@@ -18,11 +20,13 @@ import type * as hostPayout from "../hostPayout.js";
 import type * as hosts from "../hosts.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_fees from "../lib/fees.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as likes from "../likes.js";
 import type * as messages from "../messages.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
+import type * as payouts from "../payouts.js";
 import type * as profiles from "../profiles.js";
 import type * as tokens from "../tokens.js";
 import type * as uploads from "../uploads.js";
@@ -35,9 +39,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
   ageVerification: typeof ageVerification;
   assets: typeof assets;
   bookings: typeof bookings;
+  callAccess: typeof callAccess;
   calls: typeof calls;
   gallery: typeof gallery;
   gifts: typeof gifts;
@@ -45,11 +51,13 @@ declare const fullApi: ApiFromModules<{
   hosts: typeof hosts;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/fees": typeof lib_fees;
   "lib/geo": typeof lib_geo;
   likes: typeof likes;
   messages: typeof messages;
   notifications: typeof notifications;
   payments: typeof payments;
+  payouts: typeof payouts;
   profiles: typeof profiles;
   tokens: typeof tokens;
   uploads: typeof uploads;

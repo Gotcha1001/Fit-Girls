@@ -2,7 +2,7 @@ import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
-const PLATFORM_PERCENT = 20; // Paystack's percentage_charge is the platform's cut
+const PLATFORM_PERCENT = 20; // the share YOU keep; Paystack's percentage_charge is the platform's cut
 
 type PaystackBank = { name: string; code: string; active?: boolean };
 type PaystackBanksResponse = {
@@ -44,24 +44,16 @@ export const setupPayout = action({
   args: {
     bankCode: v.string(),
     accountNumber: v.string(),
-    accountHolder: v.string(),
   },
-  handler: async (
-    ctx,
-    { bankCode, accountNumber, accountHolder },
-  ): Promise<void> => {
+  handler: async (ctx, { bankCode, accountNumber }): Promise<void> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not signed in");
 
     const bank = bankCode.trim();
     const account = accountNumber.replace(/\s+/g, "");
-    const holder = accountHolder.trim();
     if (!/^[A-Za-z0-9-]{1,20}$/.test(bank)) throw new Error("Invalid bank");
     if (!/^\d{6,16}$/.test(account)) {
       throw new Error("Account number must be 6 to 16 digits");
-    }
-    if (holder.length < 2 || holder.length > 80) {
-      throw new Error("Enter the account holder's name");
     }
 
     const host = await ctx.runQuery(internal.hosts.getHostForPayout, {
@@ -81,8 +73,7 @@ export const setupPayout = action({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        business_name: `Host ${host.hostId}`, // internal label
-        description: `Account holder: ${holder}`, // helps you reconcile payouts
+        business_name: `Host ${host.hostId}`, // internal label, not her real name
         settlement_bank: bank,
         account_number: account,
         percentage_charge: PLATFORM_PERCENT,
@@ -91,6 +82,7 @@ export const setupPayout = action({
 
     const data = (await res.json()) as PaystackSubaccountResponse;
     if (!res.ok || !data.status || !data.data?.subaccount_code) {
+      // Paystack's message can be shown, but never echo the account number
       throw new Error(data.message ?? "Could not create payout account");
     }
 

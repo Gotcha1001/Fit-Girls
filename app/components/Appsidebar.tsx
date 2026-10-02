@@ -21,6 +21,10 @@ import {
   User,
   Settings,
   Coins,
+  Video,
+  BadgeCheck,
+  ShieldCheck,
+  CalendarCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -48,7 +52,60 @@ const NAV_ITEMS: NavItem[] = [
 export function AppSidebar(): React.JSX.Element {
   const { user } = useUser();
   const pathname = usePathname();
-  const likesCount = useQuery(api.likes.getLikesCount);
+
+  // Wait for the Convex user row before running other queries,
+  // so nothing throws while the account is still being created.
+  const me = useQuery(api.user.getMe);
+  const isAdmin = me?.role === "admin";
+
+  const likesCount = useQuery(api.likes.getLikesCount, me ? {} : "skip");
+  const myHost = useQuery(api.hosts.getMyHost, me ? {} : "skip");
+  // Server-side requireAdmin protects this; we only ask once we know she's an admin.
+  const pendingHosts = useQuery(
+    api.admin.listPendingHosts,
+    isAdmin ? {} : "skip",
+  );
+  const pendingCount = pendingHosts?.length ?? 0;
+
+  const hostItems: NavItem[] = [
+    { href: "/hosts", label: "Book a Host", icon: Video },
+    { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
+    {
+      href: "/host/onboarding",
+      label: myHost ? "My Host Profile" : "Become a Host",
+      icon: BadgeCheck,
+    },
+  ];
+
+  const adminItems: NavItem[] = [
+    { href: "/admin", label: "Approve Hosts", icon: ShieldCheck },
+  ];
+
+  const isActive = (href: string): boolean =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
+  function renderItems(items: NavItem[]): React.JSX.Element[] {
+    return items.map(({ href, label, icon: Icon }) => (
+      <SidebarMenuItem key={href}>
+        <SidebarMenuButton asChild isActive={isActive(href)}>
+          <Link href={href} className="flex items-center gap-2">
+            <Icon size={16} />
+            <span>{label}</span>
+          </Link>
+        </SidebarMenuButton>
+        {href === "/likes" && likesCount !== undefined && likesCount > 0 && (
+          <SidebarMenuBadge className="bg-rose-600 text-white">
+            {likesCount}
+          </SidebarMenuBadge>
+        )}
+        {href === "/admin" && pendingCount > 0 && (
+          <SidebarMenuBadge className="bg-rose-600 text-white">
+            {pendingCount}
+          </SidebarMenuBadge>
+        )}
+      </SidebarMenuItem>
+    ));
+  }
 
   return (
     <Sidebar>
@@ -69,26 +126,20 @@ export function AppSidebar(): React.JSX.Element {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarMenu>
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-              <SidebarMenuItem key={href}>
-                <SidebarMenuButton asChild isActive={pathname === href}>
-                  <Link href={href} className="flex items-center gap-2">
-                    <Icon size={16} />
-                    <span>{label}</span>
-                  </Link>
-                </SidebarMenuButton>
-                {href === "/likes" &&
-                  likesCount !== undefined &&
-                  likesCount > 0 && (
-                    <SidebarMenuBadge className="bg-rose-600 text-white">
-                      {likesCount}
-                    </SidebarMenuBadge>
-                  )}
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          <SidebarMenu>{renderItems(NAV_ITEMS)}</SidebarMenu>
         </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Video Calls</SidebarGroupLabel>
+          <SidebarMenu>{renderItems(hostItems)}</SidebarMenu>
+        </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarMenu>{renderItems(adminItems)}</SidebarMenu>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
@@ -103,7 +154,7 @@ export function AppSidebar(): React.JSX.Element {
                   {user.fullName ?? user.username}
                 </p>
                 <p className="text-[10px] text-sidebar-foreground/60 truncate">
-                  {user.primaryEmailAddress?.emailAddress}
+                  {isAdmin ? "Admin" : user.primaryEmailAddress?.emailAddress}
                 </p>
               </div>
             </div>

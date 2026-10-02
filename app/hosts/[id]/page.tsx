@@ -3,12 +3,11 @@
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { BookingPicker } from "@/app/components/BookingPicker";
 
 export default function HostProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const host = useQuery(api.hosts.getPublic, { hostId: id as Id<"hosts"> });
+  const host = useQuery(api.hosts.getPublic, { hostId: id });
 
   if (host === undefined) return <p className="p-8">Loading…</p>;
   if (host === null) return <p className="p-8">Host not found.</p>;

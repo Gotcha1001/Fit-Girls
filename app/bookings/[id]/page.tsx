@@ -4,13 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 
 export default function BookingPage() {
   const { id } = useParams<{ id: string }>();
-  const booking = useQuery(api.bookings.getMine, {
-    bookingId: id as Id<"bookings">,
-  });
+  // Live query: the webhook flips the status and this page updates by itself.
+  // We never mark anything paid from the Paystack redirect.
+  const booking = useQuery(api.bookings.getMine, { bookingId: id });
 
   if (booking === undefined) return <p className="p-8">Loading…</p>;
   if (booking === null) return <p className="p-8">Booking not found.</p>;
@@ -25,22 +24,57 @@ export default function BookingPage() {
       </p>
 
       {booking.status === "pending_payment" && (
-        <p className="rounded-lg bg-yellow-500/10 p-4 text-yellow-300">
-          Confirming your payment… this page updates automatically.
-        </p>
+        <div className="space-y-2 rounded-lg bg-yellow-500/10 p-4 text-yellow-300">
+          <p>
+            {booking.isHost
+              ? "Waiting for the guest to pay."
+              : "Confirming your payment… this page updates automatically."}
+          </p>
+          {!booking.isHost && (
+            <p className="text-sm opacity-80">
+              If you closed the payment page, this booking is released after 15
+              minutes and you can book again.
+            </p>
+          )}
+        </div>
       )}
 
       {booking.status === "paid" && (
-        <Link
-          href={`/call/${booking._id}`}
-          className="block rounded-xl bg-pink-600 py-3 text-center font-semibold"
-        >
-          Join call
-        </Link>
+        <div className="space-y-2">
+          <p className="rounded-lg bg-green-500/10 p-4 text-green-300">
+            Payment received. The call opens 5 minutes before the start time.
+          </p>
+          {booking.callSessionId ? (
+            <Link
+              href={`/call/${booking.callSessionId}`}
+              className="block rounded-xl bg-pink-600 py-3 text-center font-semibold"
+            >
+              Join call
+            </Link>
+          ) : (
+            <p className="text-sm opacity-70">Setting up your call room…</p>
+          )}
+        </div>
       )}
 
+      {booking.status === "completed" && (
+        <p className="text-neutral-300">This call is complete.</p>
+      )}
       {booking.status === "cancelled" && (
         <p className="text-red-400">This booking was cancelled.</p>
+      )}
+      {booking.status === "expired" && (
+        <div className="space-y-2">
+          <p className="text-red-400">
+            This booking expired because payment wasn&apos;t received in time.
+          </p>
+          <Link href="/hosts" className="underline">
+            Back to hosts
+          </Link>
+        </div>
+      )}
+      {booking.status === "refunded" && (
+        <p className="text-neutral-300">This booking was refunded.</p>
       )}
     </main>
   );

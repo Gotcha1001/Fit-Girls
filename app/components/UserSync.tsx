@@ -8,7 +8,7 @@ import { api } from "@/convex/_generated/api";
 // as soon as Clerk -> Convex auth is ready, on every page.
 export function UserSync(): null {
   const { isAuthenticated } = useConvexAuth();
-  const createOrGet = useMutation(api.users.createOrGet);
+  const createOrGet = useMutation(api.user.createOrGet);
 
   useEffect(() => {
     if (isAuthenticated) void createOrGet();

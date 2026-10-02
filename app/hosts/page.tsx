@@ -15,7 +15,11 @@ export default function HostsPage() {
       <h1 className="mb-6 text-3xl font-bold">Book a video call</h1>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {hosts.map((h) => (
-          <HostCard key={h._id} host={h} />
+          <HostCard
+            key={h._id}
+            // Convex returns null for "no photo"; HostCard expects undefined
+            host={{ ...h, avatarUrl: h.avatarUrl ?? undefined }}
+          />
         ))}
       </div>
     </main>
