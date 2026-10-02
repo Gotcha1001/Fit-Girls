@@ -13,99 +13,84 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
-  Compass,
-  Heart,
-  MessageCircle,
-  Gift,
-  PhoneCall,
-  User,
-  Settings,
-  Coins,
   Video,
+  CalendarCheck,
+  Coins,
+  Settings,
   BadgeCheck,
   ShieldCheck,
-  CalendarCheck,
+  KeyRound,
+  UserCog,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Role } from "@/lib/roles";
 
 interface NavItem {
   href: string;
   label: string;
-  icon: typeof Compass;
+  icon: typeof Video;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { href: "/discover", label: "Discover", icon: Compass },
-  { href: "/likes", label: "Likes", icon: Heart },
-  { href: "/messages", label: "Messages", icon: MessageCircle },
-  { href: "/calls", label: "Call Requests", icon: PhoneCall },
-  { href: "/gifts", label: "Gifts", icon: Gift },
-  { href: "/profile", label: "My Profile", icon: User },
+const CLIENT_NAV: NavItem[] = [
+  { href: "/hosts", label: "Browse Girls", icon: Video },
+  { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
   { href: "/tokens", label: "Tokens", icon: Coins },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+const HOST_NAV: NavItem[] = [
+  { href: "/host/onboarding", label: "My Profile", icon: BadgeCheck },
+  { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+const ADMIN_NAV: NavItem[] = [
+  { href: "/admin", label: "Approve Girls", icon: ShieldCheck },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+const GIRL_APPLICANT_NAV: NavItem[] = [
+  { href: "/become-a-host", label: "Host Access", icon: KeyRound },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+const UNDECIDED_NAV: NavItem[] = [
+  { href: "/choose-role", label: "Choose account type", icon: UserCog },
+];
+
+function navFor(
+  me: { role: Role; onboardingChoice?: "client" | "girl" } | null | undefined,
+): { label: string; items: NavItem[] } {
+  if (!me) return { label: "Menu", items: [] };
+  if (me.role === "admin") return { label: "Admin", items: ADMIN_NAV };
+  if (me.role === "host") return { label: "Host", items: HOST_NAV };
+  if (me.onboardingChoice === "client")
+    return { label: "Client", items: CLIENT_NAV };
+  if (me.onboardingChoice === "girl") {
+    return { label: "Host application", items: GIRL_APPLICANT_NAV };
+  }
+  return { label: "Welcome", items: UNDECIDED_NAV };
+}
 
 export function AppSidebar(): React.JSX.Element {
   const { user } = useUser();
   const pathname = usePathname();
 
-  // Wait for the Convex user row before running other queries,
-  // so nothing throws while the account is still being created.
   const me = useQuery(api.user.getMe);
-  const isAdmin = me?.role === "admin";
+  const role: Role | null = me ? me.role : null;
+  const { label: groupLabel, items } = navFor(me);
 
-  const likesCount = useQuery(api.likes.getLikesCount, me ? {} : "skip");
-  const myHost = useQuery(api.hosts.getMyHost, me ? {} : "skip");
   // Server-side requireAdmin protects this; we only ask once we know she's an admin.
-  const pendingHosts = useQuery(
-    api.admin.listPendingHosts,
-    isAdmin ? {} : "skip",
+  // New applications live in hostApplications, so count those still pending.
+  const applications = useQuery(
+    api.hostAccess.listApplications,
+    role === "admin" ? {} : "skip",
   );
-  const pendingCount = pendingHosts?.length ?? 0;
-
-  const hostItems: NavItem[] = [
-    { href: "/hosts", label: "Book a Host", icon: Video },
-    { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
-    {
-      href: "/host/onboarding",
-      label: myHost ? "My Host Profile" : "Become a Host",
-      icon: BadgeCheck,
-    },
-  ];
-
-  const adminItems: NavItem[] = [
-    { href: "/admin", label: "Approve Hosts", icon: ShieldCheck },
-  ];
+  const pendingCount =
+    applications?.filter((a) => a.status === "pending").length ?? 0;
 
   const isActive = (href: string): boolean =>
     pathname === href || pathname.startsWith(`${href}/`);
-
-  function renderItems(items: NavItem[]): React.JSX.Element[] {
-    return items.map(({ href, label, icon: Icon }) => (
-      <SidebarMenuItem key={href}>
-        <SidebarMenuButton asChild isActive={isActive(href)}>
-          <Link href={href} className="flex items-center gap-2">
-            <Icon size={16} />
-            <span>{label}</span>
-          </Link>
-        </SidebarMenuButton>
-        {href === "/likes" && likesCount !== undefined && likesCount > 0 && (
-          <SidebarMenuBadge className="bg-rose-600 text-white">
-            {likesCount}
-          </SidebarMenuBadge>
-        )}
-        {href === "/admin" && pendingCount > 0 && (
-          <SidebarMenuBadge className="bg-rose-600 text-white">
-            {pendingCount}
-          </SidebarMenuBadge>
-        )}
-      </SidebarMenuItem>
-    ));
-  }
 
   return (
     <Sidebar>
@@ -114,7 +99,7 @@ export function AppSidebar(): React.JSX.Element {
           <span className="text-2xl">💫</span>
           <div>
             <p className="text-sm font-black text-sidebar-foreground">
-              <span className="text-rose-500">SPARK</span>
+              <span className="text-rose-500">FitGirls</span>
             </p>
             <p className="text-[10px] text-sidebar-foreground/60">
               Meet someone real
@@ -125,19 +110,42 @@ export function AppSidebar(): React.JSX.Element {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarMenu>{renderItems(NAV_ITEMS)}</SidebarMenu>
+          <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+          <SidebarMenu>
+            {items.map(({ href, label, icon: Icon }) => (
+              <SidebarMenuItem key={href}>
+                <SidebarMenuButton asChild isActive={isActive(href)}>
+                  <Link href={href} className="flex items-center gap-2">
+                    <Icon size={16} />
+                    <span>{label}</span>
+                  </Link>
+                </SidebarMenuButton>
+                {href === "/admin" && pendingCount > 0 && (
+                  <SidebarMenuBadge className="bg-rose-600 text-white">
+                    {pendingCount}
+                  </SidebarMenuBadge>
+                )}
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Video Calls</SidebarGroupLabel>
-          <SidebarMenu>{renderItems(hostItems)}</SidebarMenu>
-        </SidebarGroup>
-
-        {isAdmin && (
+        {role === "user" && me?.onboardingChoice && (
           <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
-            <SidebarMenu>{renderItems(adminItems)}</SidebarMenu>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isActive("/choose-role")}>
+                  <Link href="/choose-role" className="flex items-center gap-2">
+                    <UserCog size={16} />
+                    <span>
+                      {me.onboardingChoice === "client"
+                        ? "Are you a girl? Switch"
+                        : "I'm a client instead"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarGroup>
         )}
       </SidebarContent>
@@ -154,12 +162,29 @@ export function AppSidebar(): React.JSX.Element {
                   {user.fullName ?? user.username}
                 </p>
                 <p className="text-[10px] text-sidebar-foreground/60 truncate">
-                  {isAdmin ? "Admin" : user.primaryEmailAddress?.emailAddress}
+                  {user.primaryEmailAddress?.emailAddress}
                 </p>
               </div>
             </div>
           </div>
         )}
+
+        {/* Legal links: one centered line, visible to everyone */}
+        <nav className="flex items-center justify-center whitespace-nowrap px-3 pb-3 pt-1 text-[10px] text-sidebar-foreground/60">
+          <Link
+            href="/terms"
+            className="px-2 hover:text-sidebar-foreground hover:underline"
+          >
+            Terms of Use
+          </Link>
+          <Link
+            href="/privacy"
+            className="border-l border-sidebar-border px-2 hover:text-sidebar-foreground hover:underline"
+          >
+            Privacy Policy
+          </Link>
+          <span className="border-l border-sidebar-border px-2">18+ only</span>
+        </nav>
       </SidebarFooter>
     </Sidebar>
   );

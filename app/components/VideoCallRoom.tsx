@@ -27,6 +27,9 @@ interface LiveKitTokenResponse {
   roomName: string;
 }
 
+// The only page both clients and girls are allowed to land on after a call.
+const AFTER_CALL_PATH = "/bookings";
+
 function handleMediaDeviceFailure(failure?: MediaDeviceFailure): void {
   switch (failure) {
     case MediaDeviceFailure.DeviceInUse:
@@ -215,12 +218,12 @@ export function VideoCallRoom({
       return;
     }
     await endCall({ callSessionId });
-    router.push("/messages");
+    router.push(AFTER_CALL_PATH);
   }
 
   async function handleCancel(): Promise<void> {
     await endCall({ callSessionId });
-    router.push("/calls");
+    router.push(AFTER_CALL_PATH);
   }
 
   // ---- Loading / missing ----
@@ -237,8 +240,8 @@ export function VideoCallRoom({
       <CallStatusScreen
         tone="error"
         title="Call not found"
-        actionLabel="Back to call requests"
-        onAction={(): void => router.push("/calls")}
+        actionLabel="Back to bookings"
+        onAction={(): void => router.push(AFTER_CALL_PATH)}
       />
     );
   }
@@ -267,8 +270,8 @@ export function VideoCallRoom({
       <CallStatusScreen
         title="Call declined"
         subtitle="They can't take the call right now."
-        actionLabel="Back to call requests"
-        onAction={(): void => router.push("/calls")}
+        actionLabel="Back to bookings"
+        onAction={(): void => router.push(AFTER_CALL_PATH)}
       />
     );
   }
@@ -277,8 +280,8 @@ export function VideoCallRoom({
     return (
       <CallStatusScreen
         title="Call ended"
-        actionLabel="Back to messages"
-        onAction={(): void => router.push("/messages")}
+        actionLabel="Back to bookings"
+        onAction={(): void => router.push(AFTER_CALL_PATH)}
       />
     );
   }
@@ -305,7 +308,7 @@ export function VideoCallRoom({
         actionLabel={join.retryable ? "Check again" : "Back"}
         onAction={(): void => {
           if (join.retryable) setTick((t) => t + 1);
-          else router.push("/calls");
+          else router.push(AFTER_CALL_PATH);
         }}
       >
         {join.retryable && <Loader2 className="animate-spin text-gray-400" />}
@@ -321,7 +324,7 @@ export function VideoCallRoom({
         actionLabel="Try again"
         onAction={(): void => window.location.reload()}
         secondaryLabel="Back"
-        onSecondary={(): void => router.push("/calls")}
+        onSecondary={(): void => router.push(AFTER_CALL_PATH)}
       />
     );
   }

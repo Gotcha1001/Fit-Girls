@@ -19,6 +19,13 @@ export const createBooking = mutation({
   handler: async (ctx, { hostId, startsAt, minutes }) => {
     const guest = await requireCurrentUser(ctx);
 
+    // Clients only, enforced server-side (the page guard is just for UX).
+    // Hosts and admins have role "host"/"admin"; a girl who hasn't activated
+    // yet is role "user" but chose "girl". All of them are refused here.
+    if (guest.role !== "user" || guest.onboardingChoice !== "client") {
+      throw new Error("Only client accounts can book a call");
+    }
+
     // Age gate, enforced server-side (not just by a redirect)
     if (!guest.ageConfirmedAt) throw new Error("Age verification required");
 

@@ -14,6 +14,7 @@ import { PresenceHeartbeat } from "./components/PresenceHeartbeat";
 import { AppearanceProvider } from "./context/AppearanceContext";
 import { CyberRain } from "./components/CyberRain";
 import { UserSync } from "./components/UserSync";
+import { RouteGuard } from "./components/RouteGuard";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -54,7 +55,9 @@ export default function RootLayout({
                         <div className="relative flex min-w-0 flex-1 overflow-hidden">
                           <CyberRain />
                           <SidebarInset className="flex-1 overflow-auto">
-                            <main className="p-4 lg:p-6">{children}</main>
+                            <main className="p-4 lg:p-6">
+                              <RouteGuard>{children}</RouteGuard>
+                            </main>
                           </SidebarInset>
                         </div>
                       </div>
