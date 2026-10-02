@@ -5,10 +5,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
+// Only allow redirects to paths on this site ("/hosts", not "//evil.com" or "https://...")
+function safeNext(raw: string | null): string {
+  if (
+    raw &&
+    raw.startsWith("/") &&
+    !raw.startsWith("//") &&
+    !raw.includes("\\")
+  ) {
+    return raw;
+  }
+  return "/hosts";
+}
+
 function VerifyAge() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/hosts";
+  const next = safeNext(params.get("next"));
 
   const status = useQuery(api.ageVerification.myAgeStatus);
   const confirmAdult = useMutation(api.ageVerification.confirmAdult);

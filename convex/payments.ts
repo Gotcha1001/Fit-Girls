@@ -13,8 +13,12 @@ export const initCheckout = action({
   handler: async (ctx, { bookingId }): Promise<string> => {
     // getForCheckout should verify: caller is the guest, booking is pending_payment,
     // host is approved and has a subaccount code.
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not signed in");
+
     const b = await ctx.runQuery(internal.bookings.getForCheckout, {
       bookingId,
+      clerkId: identity.subject,
     });
 
     const reference = `bk_${bookingId}_${Date.now()}`;

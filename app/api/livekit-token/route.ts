@@ -48,6 +48,9 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
+const DEFAULT_TTL_SECONDS = 2 * 60 * 60; // dating calls: 2h
+const MIN_TTL_SECONDS = 60;
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url);
   const callSessionId = searchParams.get("callSessionId");
@@ -76,21 +79,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const convex = new ConvexHttpClient(convexUrl);
   convex.setAuth(convexToken);
 
-  const session = await convex.query(api.calls.getCallSession, {
+  // THE guard: participant check, accepted status, and for paid bookings
+  // payment status + time window. Runs on the server with the user's identity.
+  const join = await convex.query(api.callAccess.getJoinInfo, {
     callSessionId: callSessionId as Id<"callSessions">,
   });
 
-  if (!session) {
-    return NextResponse.json(
-      { error: "Call session not found or you're not part of it" },
-      { status: 404 },
-    );
-  }
-  if (session.status !== "accepted") {
-    return NextResponse.json(
-      { error: "This call hasn't been accepted yet" },
-      { status: 403 },
-    );
+  if (!join.ok) {
+    return NextResponse.json({ error: join.reason }, { status: 403 });
   }
 
   const apiKey = process.env.LIVEKIT_API_KEY;
@@ -105,14 +101,26 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const user = await currentUser();
   const displayName = user?.fullName ?? user?.username ?? user?.id ?? "Guest";
 
+  // Booking tokens expire when the booking window closes; never longer than 2h.
+  const ttlSeconds =
+    join.validUntil === null
+      ? DEFAULT_TTL_SECONDS
+      : Math.max(
+          MIN_TTL_SECONDS,
+          Math.min(
+            DEFAULT_TTL_SECONDS,
+            Math.floor((join.validUntil - Date.now()) / 1000),
+          ),
+        );
+
   const token = new AccessToken(apiKey, apiSecret, {
     identity: user?.id ?? "unknown",
     name: displayName,
-    ttl: "2h",
+    ttl: ttlSeconds,
   });
 
   token.addGrant({
-    room: session.roomName,
+    room: join.roomName, // from the guard, never from the request
     roomJoin: true,
     canPublish: true,
     canSubscribe: true,
@@ -122,6 +130,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     token: await token.toJwt(),
     url: process.env.NEXT_PUBLIC_LIVEKIT_URL,
-    roomName: session.roomName,
+    roomName: join.roomName,
   });
 }

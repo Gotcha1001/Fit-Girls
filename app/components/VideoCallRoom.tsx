@@ -149,12 +149,27 @@ export function VideoCallRoom({
   const session = useQuery(api.calls.getCallSession, { callSessionId });
   const status = session?.status;
 
+  // Server-side guard: who may join, and (for paid bookings) when.
+  // `tick` forces a re-check, because queries don't re-run as time passes.
+  const [tick, setTick] = useState(0);
+  const join = useQuery(api.callAccess.getJoinInfo, { callSessionId, tick });
+  const canJoin = join?.ok === true;
+  const retryable = join?.ok === false && join.retryable === true;
+
   const [tokenData, setTokenData] = useState<LiveKitTokenResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Only ask for a LiveKit token once the call is actually accepted.
+  // While waiting for the booking window to open, re-check every 30 seconds.
   useEffect(() => {
-    if (status !== "accepted") return;
+    if (!retryable) return;
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [retryable]);
+
+  // Only ask for a LiveKit token once the call is accepted AND the guard allows it.
+  // (The token route must enforce the same rule. This is the UI half.)
+  useEffect(() => {
+    if (status !== "accepted" || !canJoin) return;
 
     let cancelled = false;
 
@@ -189,9 +204,16 @@ export function VideoCallRoom({
     return () => {
       cancelled = true;
     };
-  }, [callSessionId, status]);
+  }, [callSessionId, status, canJoin]);
 
   async function handleDisconnect(): Promise<void> {
+    // Paid booking: don't end the session on disconnect. A dropped connection
+    // shouldn't lock people out of a call they paid for; they can rejoin
+    // until the booking window closes.
+    if (join?.ok && join.bookingId) {
+      router.push(`/bookings/${join.bookingId}`);
+      return;
+    }
     await endCall({ callSessionId });
     router.push("/messages");
   }
@@ -261,7 +283,36 @@ export function VideoCallRoom({
     );
   }
 
-  // ---- Accepted: get token, then join ----
+  // ---- Accepted: guard first, then token, then join ----
+  if (join === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center text-gray-400">
+        <Loader2 className="animate-spin" />
+      </div>
+    );
+  }
+
+  if (!join.ok) {
+    return (
+      <CallStatusScreen
+        tone={join.retryable ? "neutral" : "error"}
+        title={join.reason}
+        subtitle={
+          join.retryable
+            ? "Keep this page open. You'll join automatically when the call opens."
+            : undefined
+        }
+        actionLabel={join.retryable ? "Check again" : "Back"}
+        onAction={(): void => {
+          if (join.retryable) setTick((t) => t + 1);
+          else router.push("/calls");
+        }}
+      >
+        {join.retryable && <Loader2 className="animate-spin text-gray-400" />}
+      </CallStatusScreen>
+    );
+  }
+
   if (error) {
     return (
       <CallStatusScreen

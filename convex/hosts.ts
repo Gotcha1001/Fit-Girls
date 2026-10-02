@@ -7,6 +7,7 @@ import {
 } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { getCurrentUser, requireCurrentUser } from "./lib/auth";
 
 // Rate limits in cents per minute: R5 to R100
 const MIN_RATE = 500;
@@ -19,15 +20,12 @@ async function userByClerkId(
 ): Promise<Doc<"users"> | null> {
   return await ctx.db
     .query("users")
-    .withIndex("by_clerk", (q) => q.eq("clerkId", clerkId))
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
     .unique();
 }
 
 async function myHost(ctx: QueryCtx): Promise<Doc<"hosts">> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not signed in");
-  const user = await userByClerkId(ctx, identity.subject);
-  if (!user) throw new Error("User record not found");
+  const user = await requireCurrentUser(ctx);
   const host = await ctx.db
     .query("hosts")
     .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -40,9 +38,7 @@ async function myHost(ctx: QueryCtx): Promise<Doc<"hosts">> {
 export const getMyHost = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    const user = await userByClerkId(ctx, identity.subject);
+    const user = await getCurrentUser(ctx);
     if (!user) return null;
     const host = await ctx.db
       .query("hosts")
@@ -71,10 +67,7 @@ export const saveProfile = mutation({
     ratePerMinuteCents: v.number(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not signed in");
-    const user = await userByClerkId(ctx, identity.subject);
-    if (!user) throw new Error("User record not found");
+    const user = await requireCurrentUser(ctx);
 
     const displayName = args.displayName.trim();
     const bio = args.bio.trim();
@@ -103,6 +96,11 @@ export const saveProfile = mutation({
       return existing._id;
     }
 
+    // Mark the account as a host (never downgrade an admin)
+    if (user.role === "user") {
+      await ctx.db.patch(user._id, { role: "host" });
+    }
+
     return await ctx.db.insert("hosts", {
       userId: user._id,
       displayName,
@@ -110,7 +108,7 @@ export const saveProfile = mutation({
       ratePerMinuteCents: args.ratePerMinuteCents,
       minMinutes: 10,
       status: "pending", // an admin approves later
-      kycStatus: "none", // set by the KYC webhook later
+      kycStatus: "none", // set by the admin tickbox / KYC webhook later
       payoutProvider: "paystack",
       isOnline: false,
     });
@@ -147,21 +145,21 @@ export const savePayout = internalMutation({
   },
 });
 
+// Bookable hosts only: approved, ID verified, and bank/subaccount set up.
 export const listApproved = query({
   args: {},
   handler: async (ctx) => {
     const hosts = await ctx.db
       .query("hosts")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "approved"),
-          q.eq(q.field("kycStatus"), "verified"),
-        ),
-      )
+      .withIndex("by_status", (q) => q.eq("status", "approved"))
       .collect();
 
+    const bookable = hosts.filter(
+      (h) => h.kycStatus === "verified" && !!h.payoutAccountRef,
+    );
+
     return await Promise.all(
-      hosts.map(async (h) => ({
+      bookable.map(async (h) => ({
         _id: h._id,
         displayName: h.displayName,
         avatarUrl: h.avatarId ? await ctx.storage.getUrl(h.avatarId) : null,
@@ -173,10 +171,20 @@ export const listApproved = query({
 });
 
 export const getPublic = query({
-  args: { hostId: v.id("hosts") },
-  handler: async (ctx, { hostId }) => {
+  // string, not v.id: a malformed ID in the URL should show "not found", not crash the page
+  args: { hostId: v.string() },
+  handler: async (ctx, { hostId: rawId }) => {
+    const hostId = ctx.db.normalizeId("hosts", rawId);
+    if (!hostId) return null;
     const h = await ctx.db.get(hostId);
-    if (!h || h.status !== "approved") return null;
+    if (
+      !h ||
+      h.status !== "approved" ||
+      h.kycStatus !== "verified" ||
+      !h.payoutAccountRef
+    ) {
+      return null;
+    }
     return {
       _id: h._id,
       displayName: h.displayName,

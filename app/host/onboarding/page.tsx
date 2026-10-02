@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 type Bank = { name: string; code: string };
+
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong";
@@ -20,6 +23,8 @@ const button =
 export default function HostOnboarding() {
   const host = useQuery(api.hosts.getMyHost);
   const saveProfile = useMutation(api.hosts.saveProfile);
+  const generateUploadUrl = useMutation(api.hosts.generateUploadUrl);
+  const setAvatar = useMutation(api.hosts.setAvatar);
   const listBanks = useAction(api.hostPayout.listBanks);
   const setupPayout = useAction(api.hostPayout.setupPayout);
 
@@ -31,12 +36,14 @@ export default function HostOnboarding() {
 
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+  const [accountNumberConfirm, setAccountNumberConfirm] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
   const [namesMatch, setNamesMatch] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Load the form with any saved profile
   useEffect(() => {
@@ -61,6 +68,7 @@ export default function HostOnboarding() {
   async function onSaveProfile(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setDone("");
     setBusy(true);
     try {
       await saveProfile({
@@ -76,13 +84,59 @@ export default function HostOnboarding() {
     }
   }
 
+  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    setDone("");
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError("That image is over 5 MB. Please choose a smaller one.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!res.ok) throw new Error("Upload failed. Please try again.");
+      const { storageId } = (await res.json()) as {
+        storageId: Id<"_storage">;
+      };
+      await setAvatar({ storageId });
+      setDone("Photo updated.");
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   async function onSavePayout(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setDone("");
+
+    const a = accountNumber.replace(/\s+/g, "");
+    const b = accountNumberConfirm.replace(/\s+/g, "");
+    if (a !== b) {
+      setError("The two account numbers don't match.");
+      return;
+    }
+
     setBusy(true);
     try {
       await setupPayout({ bankCode, accountNumber, accountHolder });
-      setAccountNumber(""); // don't keep it in memory
+      // don't keep the number in memory
+      setAccountNumber("");
+      setAccountNumberConfirm("");
       setDone("Payouts are set up.");
     } catch (err: unknown) {
       setError(errorMessage(err));
@@ -91,15 +145,58 @@ export default function HostOnboarding() {
     }
   }
 
+  function statusBanner(): {
+    text: string;
+    tone: "info" | "ok" | "warn";
+  } | null {
+    if (!host) return null;
+    if (host.status === "suspended") {
+      return {
+        text: "Your host account is suspended. Please contact support.",
+        tone: "warn",
+      };
+    }
+    if (host.status === "approved") {
+      return { text: "You're approved and can take bookings.", tone: "ok" };
+    }
+    if (!host.payoutReady) {
+      return {
+        text: "Next step: add your bank details below. We can't review you until payouts are set up.",
+        tone: "info",
+      };
+    }
+    return {
+      text: "All set. Your profile is waiting for an admin to check your ID and approve you.",
+      tone: "info",
+    };
+  }
+  const banner = statusBanner();
+
   return (
     <main className="mx-auto max-w-xl space-y-10 px-4 py-10 text-stone-900">
       <header>
         <h1 className="text-2xl font-semibold">Set up your host profile</h1>
         <p className="mt-2 text-stone-600">
-          You keep 80% of every booking and unlock. The platform takes 20%.
-          Payouts go straight to your bank account.
+          You keep 80% of every booking and unlock, minus payment processing
+          fees. The platform takes 20%. Payouts go straight to your bank
+          account.
         </p>
       </header>
+
+      {banner && (
+        <p
+          role="status"
+          className={`rounded-md p-3 ${
+            banner.tone === "ok"
+              ? "bg-emerald-50 text-emerald-900"
+              : banner.tone === "warn"
+                ? "bg-amber-50 text-amber-900"
+                : "bg-stone-100 text-stone-800"
+          }`}
+        >
+          {banner.text}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="rounded-md bg-red-50 p-3 text-red-800">
@@ -171,6 +268,39 @@ export default function HostOnboarding() {
 
       {host && (
         <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Your photo</h2>
+          <div className="flex items-center gap-4">
+            {host.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={host.avatarUrl}
+                alt="Your profile photo"
+                className="h-20 w-20 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-stone-200 text-xs text-stone-600">
+                No photo
+              </div>
+            )}
+            <div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={onPickAvatar}
+                disabled={busy}
+                className="text-sm"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                JPG or PNG, up to 5 MB.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {host && (
+        <section className="space-y-4">
           <h2 className="text-lg font-semibold">Where we pay you</h2>
           {host.payoutReady ? (
             <p className="rounded-md bg-stone-100 p-3">
@@ -217,6 +347,20 @@ export default function HostOnboarding() {
                   pattern="[0-9 ]{6,20}"
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value)}
+                  autoComplete="off"
+                  required
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium">
+                  Confirm account number
+                </span>
+                <input
+                  className={field}
+                  inputMode="numeric"
+                  pattern="[0-9 ]{6,20}"
+                  value={accountNumberConfirm}
+                  onChange={(e) => setAccountNumberConfirm(e.target.value)}
                   autoComplete="off"
                   required
                 />
