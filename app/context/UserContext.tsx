@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { Role } from "@/lib/roles";
 
 interface User {
   _id: string;
@@ -8,7 +9,8 @@ interface User {
   email: string;
   name: string;
   imageUrl?: string;
-  role: "admin" | "user";
+  role: Role; // was "admin" | "user", now also allows "host"
+  onboardingChoice?: "client" | "girl";
   createdAt: number;
   appearance?: {
     accent: string;
