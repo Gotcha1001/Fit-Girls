@@ -47,6 +47,37 @@ export const listPendingHosts = query({
   },
 });
 
+// Active hosts: approved girls who can currently take bookings. This is what
+// the admin uses to remove one (Suspend). Never returns the Paystack
+// subaccount code.
+export const listApprovedHosts = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const hosts = await ctx.db
+      .query("hosts")
+      .withIndex("by_status", (q) => q.eq("status", "approved"))
+      .collect();
+
+    return await Promise.all(
+      hosts.map(async (h) => {
+        const user = await ctx.db.get(h.userId);
+        return {
+          _id: h._id,
+          displayName: h.displayName,
+          email: user?.email ?? "",
+          avatarUrl: h.avatarId ? await ctx.storage.getUrl(h.avatarId) : null,
+          ratePerMinuteCents: h.ratePerMinuteCents,
+          isOnline: h.isOnline,
+          payoutReady: !!h.payoutAccountRef,
+          bankLast4: h.bankLast4 ?? null,
+        };
+      }),
+    );
+  },
+});
+
 // Admin ticks "ID checked" and approves. Refuses unless both are true,
 // and unless the host finished bank setup (otherwise she can't be paid).
 export const approveHost = mutation({

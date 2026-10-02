@@ -68,6 +68,9 @@ export const saveProfile = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireCurrentUser(ctx);
+    if (user.role !== "host") {
+      throw new Error("Activate your host access first");
+    }
 
     const displayName = args.displayName.trim();
     const bio = args.bio.trim();
@@ -96,10 +99,15 @@ export const saveProfile = mutation({
       return existing._id;
     }
 
-    // Mark the account as a host (never downgrade an admin)
-    if (user.role === "user") {
-      await ctx.db.patch(user._id, { role: "host" });
-    }
+    // The admin already checked her ID when approving her application,
+    // so a girl who activated her code is bookable once her payout is set up.
+    const application = await ctx.db
+      .query("hostApplications")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const preApproved =
+      application?.status === "activated" && application.idChecked === true;
 
     return await ctx.db.insert("hosts", {
       userId: user._id,
@@ -107,8 +115,8 @@ export const saveProfile = mutation({
       bio,
       ratePerMinuteCents: args.ratePerMinuteCents,
       minMinutes: 10,
-      status: "pending", // an admin approves later
-      kycStatus: "none", // set by the admin tickbox / KYC webhook later
+      status: preApproved ? "approved" : "pending",
+      kycStatus: preApproved ? "verified" : "none",
       payoutProvider: "paystack",
       isOnline: false,
     });

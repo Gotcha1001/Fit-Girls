@@ -21,6 +21,10 @@ export default defineSchema({
     createdAt: v.number(),
     // NEW: set by /verify-age, enforced in the booking mutation
     ageConfirmedAt: v.optional(v.number()),
+    // Chosen right after sign-up. Only meaningful while role === "user".
+    onboardingChoice: v.optional(
+      v.union(v.literal("client"), v.literal("girl")),
+    ),
     appearance: v.optional(
       v.object({
         accent: v.string(),
@@ -247,6 +251,29 @@ export default defineSchema({
   })
     .index("by_reference", ["providerReference"])
     .index("by_payer", ["payerId"]),
+
+  // A girl's application. The access code is stored only as a hash.
+  hostApplications: defineTable({
+    userId: v.id("users"),
+    fullName: v.string(),
+    contact: v.optional(v.string()),
+    message: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"), // approved, waiting for her to enter the code
+      v.literal("rejected"),
+      v.literal("activated"),
+    ),
+    idChecked: v.optional(v.boolean()),
+    note: v.optional(v.string()), // rejection note
+    codeHash: v.optional(v.string()),
+    codeExpiresAt: v.optional(v.number()),
+    codeAttempts: v.number(),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"]),
 
   blocks: defineTable({
     hostId: v.id("hosts"),
