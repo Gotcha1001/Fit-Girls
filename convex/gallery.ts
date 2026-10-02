@@ -8,7 +8,7 @@ async function getUser(ctx: QueryCtx) {
   if (!identity) return null;
   return await ctx.db
     .query("users")
-    .withIndex("by_clerk", (q) => q.eq("clerkId", identity.subject))
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .unique();
 }
 
