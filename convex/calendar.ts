@@ -1,15 +1,15 @@
 // convex/calendar.ts
-import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
 import {
   dayIndexOf,
   dayStartMs,
   lastBookableDay,
+  MAX_CALL_MINUTES,
   MAX_RANGE_DAYS,
   MIN_LEAD_MS,
   HOUR_MS,
 } from "./lib/schedule";
 import {
+  bookingEnd,
   bookingsTouching,
   cleanHours,
   daySlotStates,
@@ -19,6 +19,9 @@ import {
   requireMyHost,
   findMyHost,
 } from "./lib/availability";
+import { openStarts } from "./lib/slots";
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 import { getCurrentUser } from "./lib/auth";
 
 // ───────────── PUBLIC (client booking calendar) ─────────────
@@ -28,8 +31,16 @@ export const getDay = query({
   args: {
     hostId: v.id("hosts"),
     dayIndex: v.number(),
+    minutes: v.number(),
   },
-  handler: async (ctx, { hostId, dayIndex }) => {
+  handler: async (ctx, { hostId, dayIndex, minutes }) => {
+    if (
+      !Number.isInteger(minutes) ||
+      minutes <= 0 ||
+      minutes > MAX_CALL_MINUTES
+    ) {
+      return null;
+    }
     const now = Date.now();
     const today = dayIndexOf(now);
     if (dayIndex < today || dayIndex > lastBookableDay(now)) return null;
@@ -43,28 +54,34 @@ export const getDay = query({
 
     const fromMs = dayStartMs(dayIndex);
     const toMs = fromMs + 24 * HOUR_MS;
-    const bookings = await bookingsTouching(ctx, hostId, fromMs, toMs);
-
-    const viewer = await getCurrentUser(ctx);
-    const states = daySlotStates(
-      dayIndex,
-      hours,
-      bookings,
-      viewer?._id ?? null,
+    // +1 hour so a call that starts just after midnight still protects the
+    // 5-minute gap at the very end of this day.
+    const bookings = await bookingsTouching(
+      ctx,
+      hostId,
+      fromMs,
+      toMs + HOUR_MS,
     );
+    const viewer = await getCurrentUser(ctx);
 
-    // Soft-close open slots inside the 1-hour lead window
-    const leadCutoff = now + MIN_LEAD_MS;
-    const visible = states.map((s, h) => {
-      if (s !== "open") return s;
-      return fromMs + h * HOUR_MS >= leadCutoff ? "open" : "off";
-    });
+    const busy = bookings.map((b) => ({
+      startsAt: b.startsAt,
+      endsAt: bookingEnd(b),
+    }));
+    const slots = openStarts({ dayIndex, openHours: hours, busy, minutes });
+
+    const segments = bookings.map((b) => ({
+      startsAt: b.startsAt,
+      endsAt: bookingEnd(b),
+      mine: viewer !== null && b.guestId === viewer._id,
+    }));
 
     return {
       dayIndex,
       isOverride,
       hours,
-      states: visible,
+      slots,
+      segments,
       hostName: host.displayName,
       ratePerMinuteCents: host.ratePerMinuteCents,
       minMinutes: host.minMinutes,

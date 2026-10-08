@@ -9,9 +9,24 @@ import { v } from "convex/values";
 import { split } from "./lib/fees";
 import { getCurrentUser, requireCurrentUser } from "./lib/auth";
 import type { Id } from "./_generated/dataModel";
+import {
+  GAP_MINUTES,
+  GAP_MS,
+  MAX_CALL_MINUTES,
+  MIN_MS,
+  dayIndexOf,
+  isSlotBookable,
+  lastBookableDay,
+} from "./lib/schedule";
+import { clashesWithGap, fitsInRuns, isOnGrid, openRuns } from "./lib/slots";
+import {
+  bookingEnd,
+  holdsSlot,
+  loadWeekly,
+  workingHoursOn,
+} from "./lib/availability";
 
-const MIN_MS = 60_000;
-const MAX_MINUTES = 120; // longest allowed booking; keeps the overlap lookback exact
+const MAX_MINUTES = MAX_CALL_MINUTES; // longest allowed booking; keeps the overlap lookback exact
 const PENDING_EXPIRY_MS = 15 * MIN_MS;
 
 export const createBooking = mutation({
@@ -20,20 +35,26 @@ export const createBooking = mutation({
     const guest = await requireCurrentUser(ctx);
 
     // Clients only, enforced server-side (the page guard is just for UX).
-    // Hosts and admins have role "host"/"admin"; a girl who hasn't activated
-    // yet is role "user" but chose "girl". All of them are refused here.
     if (guest.role !== "user" || guest.onboardingChoice !== "client") {
       throw new Error("Only client accounts can book a call");
     }
-
     // Age gate, enforced server-side (not just by a redirect)
     if (!guest.ageConfirmedAt) throw new Error("Age verification required");
 
     if (!Number.isInteger(minutes) || minutes <= 0 || minutes > MAX_MINUTES) {
       throw new Error(`Duration must be 1-${MAX_MINUTES} minutes`);
     }
-    if (!Number.isFinite(startsAt) || startsAt < Date.now()) {
-      throw new Error("Start time must be in the future");
+
+    // ── time rules ──
+    const now = Date.now();
+    if (!Number.isFinite(startsAt) || !isOnGrid(startsAt)) {
+      throw new Error("Start time must be on a 5-minute mark");
+    }
+    if (!isSlotBookable(startsAt, now)) {
+      throw new Error("Bookings close 1 hour before the start time");
+    }
+    if (dayIndexOf(startsAt) > lastBookableDay(now)) {
+      throw new Error("That date is too far ahead");
     }
 
     const host = await ctx.db.get(hostId);
@@ -59,30 +80,39 @@ export const createBooking = mutation({
       .first();
     if (blocked) throw new Error("Host unavailable");
 
-    // Overlap check using the by_host_time index.
-    // Any booking that could overlap starts after (startsAt - MAX) and before our end.
     const endsAt = startsAt + minutes * MIN_MS;
+
+    // ── must be inside her working hours (one unbroken run) ──
+    const dayIndex = dayIndexOf(startsAt);
+    const weekly = await loadWeekly(ctx, hostId);
+    const hours = await workingHoursOn(ctx, hostId, weekly, dayIndex);
+    if (!fitsInRuns(startsAt, endsAt, openRuns(dayIndex, [...hours]))) {
+      throw new Error("That call doesn't fit inside her working hours");
+    }
+
+    // ── no overlap, and a GAP_MINUTES break on both sides ──
+    // A booking can only matter if it starts within MAX minutes + gap before
+    // our start, or before our end + gap.
     const nearby = await ctx.db
       .query("bookings")
       .withIndex("by_host_time", (q) =>
         q
           .eq("hostId", hostId)
-          .gt("startsAt", startsAt - MAX_MINUTES * MIN_MS)
-          .lt("startsAt", endsAt),
+          .gte("startsAt", startsAt - (MAX_MINUTES * MIN_MS + GAP_MS))
+          .lt("startsAt", endsAt + GAP_MS),
       )
       .collect();
+
     let clash = false;
     for (const b of nearby) {
+      if (!holdsSlot(b.status)) continue; // cancelled / expired / refunded
       if (
-        b.status === "cancelled" ||
-        b.status === "expired" ||
-        b.status === "refunded"
+        !clashesWithGap(startsAt, endsAt, [
+          { startsAt: b.startsAt, endsAt: bookingEnd(b) },
+        ])
       ) {
-        continue; // these don't hold the slot
+        continue;
       }
-      const bEnd = b.endsAt ?? b.startsAt + b.minutes * MIN_MS;
-      if (bEnd <= startsAt) continue;
-
       // The guest's own unpaid attempt (e.g. they closed the payment tab)
       // must not block a retry. Release it and carry on.
       if (b.status === "pending_payment" && b.guestId === guest._id) {
@@ -91,7 +121,11 @@ export const createBooking = mutation({
       }
       clash = true;
     }
-    if (clash) throw new Error("Time slot taken");
+    if (clash) {
+      throw new Error(
+        `Time slot taken (she keeps a ${GAP_MINUTES}-minute break between calls)`,
+      );
+    }
 
     // Price is always computed here from the host's rate, never from the browser
     const amountCents = host.ratePerMinuteCents * minutes;
@@ -114,11 +148,9 @@ export const createBooking = mutation({
       internal.bookings.expireIfUnpaid,
       { bookingId },
     );
-
     return bookingId;
   },
 });
-
 export const expireIfUnpaid = internalMutation({
   args: { bookingId: v.id("bookings") },
   handler: async (ctx, { bookingId }) => {

@@ -1,58 +1,266 @@
+// "use client";
+
+// import { useState } from "react";
+// import { useQuery } from "convex/react";
+// import { api } from "@/convex/_generated/api";
+// import type { Id } from "@/convex/_generated/dataModel";
+// import {
+//   dayStartMs,
+//   formatDayLong,
+//   formatHour,
+//   relativeDayLabel,
+//   MAX_DAYS_AHEAD,
+// } from "@/convex/lib/schedule";
+// import { ALL_HOURS } from "@/convex/lib/slots";
+// import { useSastClock } from "@/hooks/useSastClock";
+// import { Button } from "@/components/ui/button";
+// import { cn } from "@/lib/utils";
+
+// const COLORS: Record<string, string> = {
+//   open: "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer",
+//   booked: "bg-zinc-700 text-zinc-400 cursor-not-allowed",
+//   mine: "bg-sky-600 text-white cursor-default",
+//   off: "bg-zinc-900 text-zinc-600 cursor-not-allowed",
+// };
+
+// type Props = {
+//   hostId: Id<"hosts">;
+//   onSelectSlot: (startsAt: number) => void;
+// };
+
+// export function GirlCalendar({ hostId, onSelectSlot }: Props) {
+//   const { dayIndex: today } = useSastClock(15_000);
+//   const [dayIndex, setDayIndex] = useState(today);
+
+//   // Keep selection from falling into the past when SAST midnight rolls over.
+//   // Adjust state while rendering (React-approved), not inside an effect.
+//   const maxDay = today + MAX_DAYS_AHEAD;
+//   if (dayIndex < today) {
+//     setDayIndex(today);
+//   } else if (dayIndex > maxDay) {
+//     setDayIndex(maxDay);
+//   }
+
+//   const day = useQuery(api.calendar.getDay, { hostId, dayIndex });
+
+//   function jump(delta: number) {
+//     const next = dayIndex + delta;
+//     if (next < today || next > maxDay) return;
+//     setDayIndex(next);
+//   }
+
+//   function handleClick(hour: number, state: string) {
+//     if (state !== "open") return;
+//     onSelectSlot(dayStartMs(dayIndex) + hour * 3_600_000);
+//   }
+
+//   return (
+//     <div className="space-y-4">
+//       <div className="flex flex-wrap items-center gap-2">
+//         <Button
+//           size="sm"
+//           variant="outline"
+//           disabled={dayIndex <= today}
+//           onClick={() => jump(-1)}
+//         >
+//           ←
+//         </Button>
+//         <Button
+//           size="sm"
+//           variant={dayIndex === today ? "default" : "outline"}
+//           onClick={() => setDayIndex(today)}
+//         >
+//           Today
+//         </Button>
+//         <Button
+//           size="sm"
+//           variant={dayIndex === today + 1 ? "default" : "outline"}
+//           onClick={() => setDayIndex(today + 1)}
+//         >
+//           Tomorrow
+//         </Button>
+//         <Button
+//           size="sm"
+//           variant="outline"
+//           disabled={dayIndex >= maxDay}
+//           onClick={() => jump(1)}
+//         >
+//           →
+//         </Button>
+//         <Button size="sm" variant="outline" onClick={() => jump(7)}>
+//           +7 days
+//         </Button>
+//         <span className="ml-auto text-sm text-zinc-300">
+//           {relativeDayLabel(dayIndex, today)} · {formatDayLong(dayIndex)}
+//         </span>
+//       </div>
+
+//       {day === undefined && (
+//         <p className="text-sm text-zinc-500">Loading availability…</p>
+//       )}
+//       {day === null && (
+//         <p className="text-sm text-zinc-500">No availability for this day.</p>
+//       )}
+
+//       {day && (
+//         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+//           {ALL_HOURS.map((h) => {
+//             const state = day.states[h];
+//             return (
+//               <button
+//                 key={h}
+//                 type="button"
+//                 disabled={state !== "open"}
+//                 onClick={() => handleClick(h, state)}
+//                 className={cn(
+//                   "rounded-lg px-2 py-3 text-center text-sm font-medium transition",
+//                   COLORS[state],
+//                 )}
+//               >
+//                 {formatHour(h)}
+//                 <div className="mt-0.5 text-[10px] capitalize opacity-70">
+//                   {state === "open" ? "Available" : state}
+//                 </div>
+//               </button>
+//             );
+//           })}
+//         </div>
+//       )}
+
+//       <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+//         <span className="flex items-center gap-1.5">
+//           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+//           Available
+//         </span>
+//         <span className="flex items-center gap-1.5">
+//           <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
+//           Booked
+//         </span>
+//         <span className="flex items-center gap-1.5">
+//           <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+//           Your booking
+//         </span>
+//         <span className="flex items-center gap-1.5">
+//           <span className="inline-block h-2 w-2 rounded-full bg-zinc-800" />
+//           Off / closed
+//         </span>
+//       </div>
+//     </div>
+//   );
+// }
+
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
+  GAP_MINUTES,
+  HOUR_MS,
+  MAX_DAYS_AHEAD,
+  MIN_MS,
   dayStartMs,
   formatDayLong,
   formatHour,
+  formatTime,
+  hourOf,
+  isSlotBookable,
   relativeDayLabel,
-  MAX_DAYS_AHEAD,
 } from "@/convex/lib/schedule";
-import { ALL_HOURS } from "@/convex/lib/slots";
+import { slotStartsBetween } from "@/convex/lib/slots";
 import { useSastClock } from "@/hooks/useSastClock";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-const COLORS: Record<string, string> = {
-  open: "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer",
-  booked: "bg-zinc-700 text-zinc-400 cursor-not-allowed",
-  mine: "bg-sky-600 text-white cursor-default",
-  off: "bg-zinc-900 text-zinc-600 cursor-not-allowed",
-};
+import { HourBar, type BarSegment } from "../HourBar";
 
 type Props = {
   hostId: Id<"hosts">;
+  /** Length of the call the client picked. The start times on screen depend on it. */
+  minutes: number;
+  /** Currently chosen start time (ms), or null. */
+  selected: number | null;
   onSelectSlot: (startsAt: number) => void;
 };
 
-export function GirlCalendar({ hostId, onSelectSlot }: Props) {
-  const { dayIndex: today } = useSastClock(15_000);
-  const [dayIndex, setDayIndex] = useState(today);
-
-  // Keep selection from falling into the past when SAST midnight rolls over.
-  // Adjust state while rendering (React-approved), not inside an effect.
+export function GirlCalendar({
+  hostId,
+  minutes,
+  selected,
+  onSelectSlot,
+}: Props) {
+  const { now, dayIndex: today } = useSastClock(15_000);
   const maxDay = today + MAX_DAYS_AHEAD;
-  if (dayIndex < today) {
-    setDayIndex(today);
-  } else if (dayIndex > maxDay) {
-    setDayIndex(maxDay);
-  }
 
-  const day = useQuery(api.calendar.getDay, { hostId, dayIndex });
+  // null = "follow today", so the view stays right if the page is left open past midnight.
+  const [picked, setPicked] = useState<number | null>(null);
+  const dayIndex =
+    picked === null ? today : Math.min(Math.max(picked, today), maxDay);
+
+  const day = useQuery(api.calendar.getDay, { hostId, dayIndex, minutes });
 
   function jump(delta: number) {
-    const next = dayIndex + delta;
-    if (next < today || next > maxDay) return;
-    setDayIndex(next);
+    setPicked(Math.min(Math.max(dayIndex + delta, today), maxDay));
   }
 
-  function handleClick(hour: number, state: string) {
-    if (state !== "open") return;
-    onSelectSlot(dayStartMs(dayIndex) + hour * 3_600_000);
-  }
+  const view = useMemo(() => {
+    if (!day) return null;
+    const dayStart = dayStartMs(day.dayIndex);
+    const dayEnd = dayStart + 24 * HOUR_MS;
+
+    // Free start times grouped by the hour they begin in. The 1-hour lead
+    // time is applied here, against the live clock.
+    const slotsByHour = new Map<number, number[]>();
+    let total = 0;
+    for (const s of day.slots) {
+      if (!isSlotBookable(s, now)) continue;
+      const h = hourOf(s);
+      const list = slotsByHour.get(h) ?? [];
+      list.push(s);
+      slotsByHour.set(h, list);
+      total += 1;
+    }
+
+    // Show her working hours, plus any hour that holds a booking.
+    const working = new Set<number>(day.hours);
+    const shown = new Set<number>(day.hours);
+    const hasBooking = new Set<number>();
+    for (const seg of day.segments) {
+      for (const t of slotStartsBetween(seg.startsAt, seg.endsAt)) {
+        if (t >= dayStart && t < dayEnd) {
+          shown.add(hourOf(t));
+          hasBooking.add(hourOf(t));
+        }
+      }
+    }
+
+    const booked: BarSegment[] = day.segments.map((s) => ({
+      startsAt: s.startsAt,
+      endsAt: s.endsAt,
+      tone: s.mine ? "mine" : "booked",
+    }));
+
+    return {
+      dayStart,
+      slotsByHour,
+      total,
+      working,
+      hasBooking,
+      booked,
+      hours: [...shown].sort((a, b) => a - b),
+    };
+  }, [day, now]);
+
+  const selectedSegment: BarSegment[] =
+    selected === null
+      ? []
+      : [
+          {
+            startsAt: selected,
+            endsAt: selected + minutes * MIN_MS,
+            tone: "selected",
+          },
+        ];
 
   return (
     <div className="space-y-4">
@@ -68,14 +276,14 @@ export function GirlCalendar({ hostId, onSelectSlot }: Props) {
         <Button
           size="sm"
           variant={dayIndex === today ? "default" : "outline"}
-          onClick={() => setDayIndex(today)}
+          onClick={() => setPicked(null)}
         >
           Today
         </Button>
         <Button
           size="sm"
           variant={dayIndex === today + 1 ? "default" : "outline"}
-          onClick={() => setDayIndex(today + 1)}
+          onClick={() => setPicked(today + 1)}
         >
           Tomorrow
         </Button>
@@ -87,7 +295,12 @@ export function GirlCalendar({ hostId, onSelectSlot }: Props) {
         >
           →
         </Button>
-        <Button size="sm" variant="outline" onClick={() => jump(7)}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={dayIndex >= maxDay}
+          onClick={() => jump(7)}
+        >
           +7 days
         </Button>
         <span className="ml-auto text-sm text-zinc-300">
@@ -95,33 +308,94 @@ export function GirlCalendar({ hostId, onSelectSlot }: Props) {
         </span>
       </div>
 
+      <p className="text-xs text-zinc-500">
+        Every start time for a {minutes}-minute call. She keeps a {GAP_MINUTES}
+        -minute break between calls.
+        {view && ` ${view.total} time${view.total === 1 ? "" : "s"} available.`}
+      </p>
+
       {day === undefined && (
         <p className="text-sm text-zinc-500">Loading availability…</p>
       )}
       {day === null && (
         <p className="text-sm text-zinc-500">No availability for this day.</p>
       )}
+      {day && view && view.hours.length === 0 && (
+        <p className="text-sm text-zinc-500">
+          She isn&apos;t working this day.
+        </p>
+      )}
 
-      {day && (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-          {ALL_HOURS.map((h) => {
-            const state = day.states[h];
+      {day && view && view.hours.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {view.hours.map((h) => {
+            const slots = view.slotsByHour.get(h) ?? [];
+            const isWorking = view.working.has(h);
+            const status =
+              slots.length > 0
+                ? `${slots.length} available`
+                : view.hasBooking.has(h)
+                  ? "Booked"
+                  : isWorking
+                    ? "No times left"
+                    : "Closed";
+
+            const free: BarSegment[] = slots.map((s) => ({
+              startsAt: s,
+              endsAt: s + minutes * MIN_MS,
+              tone: "free",
+            }));
+
             return (
-              <button
+              <div
                 key={h}
-                type="button"
-                disabled={state !== "open"}
-                onClick={() => handleClick(h, state)}
                 className={cn(
-                  "rounded-lg px-2 py-3 text-center text-sm font-medium transition",
-                  COLORS[state],
+                  "rounded-xl border p-3",
+                  isWorking
+                    ? "border-white/10 bg-zinc-900/60"
+                    : "border-zinc-800 bg-zinc-950/60",
                 )}
               >
-                {formatHour(h)}
-                <div className="mt-0.5 text-[10px] capitalize opacity-70">
-                  {state === "open" ? "Available" : state}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm font-semibold text-zinc-100">
+                    {formatHour(h)}
+                  </span>
+                  <span className="text-[11px] text-zinc-500">{status}</span>
                 </div>
-              </button>
+
+                <HourBar
+                  hourStart={view.dayStart + h * HOUR_MS}
+                  segments={[...view.booked, ...free, ...selectedSegment]}
+                  closed={!isWorking}
+                />
+
+                {slots.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {slots.map((s) => {
+                      const isSelected = selected === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => onSelectSlot(s)}
+                          aria-pressed={isSelected}
+                          className={cn(
+                            "rounded-lg px-2.5 py-1.5 text-left text-sm font-medium leading-tight transition",
+                            isSelected
+                              ? "bg-pink-600 text-white ring-2 ring-pink-300"
+                              : "bg-emerald-600 text-white hover:bg-emerald-500",
+                          )}
+                        >
+                          {formatTime(s)}
+                          <span className="block text-[10px] font-normal opacity-75">
+                            to {formatTime(s + minutes * MIN_MS)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -130,10 +404,10 @@ export function GirlCalendar({ hostId, onSelectSlot }: Props) {
       <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          Available
+          Free call time
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
+          <span className="inline-block h-2 w-2 rounded-full bg-zinc-500" />
           Booked
         </span>
         <span className="flex items-center gap-1.5">
@@ -141,8 +415,18 @@ export function GirlCalendar({ hostId, onSelectSlot }: Props) {
           Your booking
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-zinc-800" />
-          Off / closed
+          <span className="inline-block h-2 w-2 rounded-full bg-pink-500" />
+          Selected
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-3 rounded-sm"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(135deg, rgba(161,161,170,0.7) 0 2px, transparent 2px 4px)",
+            }}
+          />
+          {GAP_MINUTES}-min break
         </span>
       </div>
     </div>

@@ -4,8 +4,13 @@ import { useState } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-
-import { durationOptions } from "@/convex/lib/schedule";
+import {
+  MIN_MS,
+  dayIndexOf,
+  durationOptions,
+  formatDayLong,
+  formatTimeRange,
+} from "@/convex/lib/schedule";
 import { Button } from "@/components/ui/button";
 import { GirlCalendar } from "./booking/GirlCalendar";
 
@@ -24,9 +29,15 @@ export function BookCallPanel({
   const [error, setError] = useState<string | null>(null);
 
   const createBooking = useMutation(api.bookings.createBooking);
-  const initCheckout = useAction(api.payments.initCheckout); // NEW
+  const initCheckout = useAction(api.payments.initCheckout);
 
   const options = durationOptions(minMinutes, 120);
+
+  function chooseMinutes(m: number) {
+    setMinutes(m);
+    setStartsAt(null); // start times change with the length, so drop the old pick
+    setError(null);
+  }
 
   async function confirm() {
     if (startsAt == null || busy) return;
@@ -53,7 +64,7 @@ export function BookCallPanel({
               key={m}
               size="sm"
               variant={minutes === m ? "default" : "outline"}
-              onClick={() => setMinutes(m)}
+              onClick={() => chooseMinutes(m)}
             >
               {m} min · R{((ratePerMinuteCents * m) / 100).toFixed(0)}
             </Button>
@@ -61,14 +72,25 @@ export function BookCallPanel({
         </div>
       </div>
 
-      <GirlCalendar hostId={hostId} onSelectSlot={setStartsAt} />
+      <GirlCalendar
+        hostId={hostId}
+        minutes={minutes}
+        selected={startsAt}
+        onSelectSlot={setStartsAt}
+      />
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {startsAt != null && (
-        <Button className="w-full" onClick={confirm} disabled={busy}>
-          {busy ? "Redirecting to payment…" : "Continue to payment"}
-        </Button>
+        <div className="space-y-2">
+          <p className="text-sm text-zinc-300">
+            {formatDayLong(dayIndexOf(startsAt))} ·{" "}
+            {formatTimeRange(startsAt, startsAt + minutes * MIN_MS)} (SAST)
+          </p>
+          <Button className="w-full" onClick={confirm} disabled={busy}>
+            {busy ? "Redirecting to payment…" : "Continue to payment"}
+          </Button>
+        </div>
       )}
     </div>
   );
