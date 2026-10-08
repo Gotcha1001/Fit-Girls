@@ -4,15 +4,22 @@
 // imports so both sides can use it. One source of truth for the rules.
 //
 // All slot maths happens in South African time (SAST, UTC+2, no daylight
-// saving), so every viewer sees the same hourly grid whatever their device
-// time zone is. A "day index" is the number of SAST days since 1970-01-01.
+// saving), so every viewer sees the same grid whatever their device time zone
+// is. A "day index" is the number of SAST days since 1970-01-01.
 
 export const HOUR_MS = 3_600_000;
 export const MIN_MS = 60_000;
 export const DAY_MS = 86_400_000;
-
 export const SCHEDULE_TZ_OFFSET_MS = 2 * HOUR_MS;
 export const SCHEDULE_TZ_LABEL = "SAST";
+
+// ───────────── NEW: gap + slot grid ─────────────
+/** Break she always gets between two calls (prep time, no stress). */
+export const GAP_MINUTES = 5;
+export const GAP_MS = GAP_MINUTES * MIN_MS;
+/** Calls must start on a multiple of this. Must divide 60 evenly. */
+export const SLOT_GRID_MINUTES = 5;
+export const SLOT_GRID_MS = SLOT_GRID_MINUTES * MIN_MS;
 
 /** A call can only be booked while its start is at least this far away. */
 export const MIN_LEAD_MS = HOUR_MS;
@@ -45,7 +52,6 @@ export const WEEKDAY_LONG = [
 const mod = (n: number, m: number): number => ((n % m) + m) % m;
 
 // ───────────── day / hour maths ─────────────
-
 export function dayIndexOf(ts: number): number {
   return Math.floor((ts + SCHEDULE_TZ_OFFSET_MS) / DAY_MS);
 }
@@ -70,13 +76,12 @@ export function slotStartMs(dayIndex: number, hour: number): number {
 }
 
 // ───────────── booking rules ─────────────
-
-/** True while a slot starting at `startsAt` can still be booked. */
+/** True while a call starting at `startsAt` can still be booked. */
 export function isSlotBookable(startsAt: number, now: number): boolean {
   return startsAt >= now + MIN_LEAD_MS;
 }
 
-/** Moment bookings for that slot close. */
+/** Moment bookings for that start time close. */
 export function bookingClosesAt(startsAt: number): number {
   return startsAt - MIN_LEAD_MS;
 }
@@ -86,7 +91,6 @@ export function lastBookableDay(now: number): number {
 }
 
 // ───────────── formatting (display only) ─────────────
-
 export function formatHour(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
 }
@@ -138,7 +142,6 @@ export function relativeDayLabel(dayIndex: number, todayIndex: number): string {
 }
 
 // ───────────── bridge to the shadcn <Calendar> (uses local Dates) ─────────────
-
 export function dayIndexToLocalDate(dayIndex: number): Date {
   const d = dayDate(dayIndex);
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
