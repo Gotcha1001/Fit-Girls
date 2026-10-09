@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { LEGACY_TZ, MIN_MS } from "@/convex/lib/schedule";
+import { DualTime } from "@/app/components/DualTime";
 
 export default function BookingPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,14 +16,26 @@ export default function BookingPage() {
   if (booking === undefined) return <p className="p-8">Loading…</p>;
   if (booking === null) return <p className="p-8">Booking not found.</p>;
 
-  const when = new Date(booking.startsAt).toLocaleString();
+  const hostTz = booking.hostTimezone ?? LEGACY_TZ;
+  const guestTz = booking.guestTimezone ?? hostTz;
+  const endsAt = booking.endsAt ?? booking.startsAt + booking.minutes * MIN_MS;
 
   return (
     <main className="mx-auto max-w-lg space-y-4 p-6">
       <h1 className="text-2xl font-bold">Booking with {booking.hostName}</h1>
-      <p>
-        {when} · {booking.minutes} minutes
-      </p>
+
+      <div className="space-y-1">
+        <DualTime
+          ts={booking.startsAt}
+          endTs={endsAt}
+          hostTz={hostTz}
+          otherTz={guestTz}
+          showDate
+          hostLabel={booking.isHost ? "Your time" : "Her time"}
+          otherLabel={booking.isHost ? "Client's time" : "Your time"}
+        />
+        <p className="text-sm text-neutral-400">{booking.minutes} minutes</p>
+      </div>
 
       {booking.status === "pending_payment" && (
         <div className="space-y-2 rounded-lg bg-yellow-500/10 p-4 text-yellow-300">
@@ -60,9 +74,11 @@ export default function BookingPage() {
       {booking.status === "completed" && (
         <p className="text-neutral-300">This call is complete.</p>
       )}
+
       {booking.status === "cancelled" && (
         <p className="text-red-400">This booking was cancelled.</p>
       )}
+
       {booking.status === "expired" && (
         <div className="space-y-2">
           <p className="text-red-400">
@@ -73,6 +89,7 @@ export default function BookingPage() {
           </Link>
         </div>
       )}
+
       {booking.status === "refunded" && (
         <p className="text-neutral-300">This booking was refunded.</p>
       )}

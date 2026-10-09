@@ -12,6 +12,8 @@ interface User {
   role: Role;
   onboardingChoice?: "client" | "girl";
   createdAt: number;
+  country?: string;
+  timezone?: string;
   appearance?: {
     accent: string;
     rainMode: string;

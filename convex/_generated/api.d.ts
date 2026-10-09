@@ -11,6 +11,7 @@
 import type * as admin from "../admin.js";
 import type * as ageVerification from "../ageVerification.js";
 import type * as assets from "../assets.js";
+import type * as backfillLocale from "../backfillLocale.js";
 import type * as bookings from "../bookings.js";
 import type * as calendar from "../calendar.js";
 import type * as callAccess from "../callAccess.js";
@@ -27,6 +28,7 @@ import type * as lib_fees from "../lib/fees.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as lib_schedule from "../lib/schedule.js";
 import type * as lib_slots from "../lib/slots.js";
+import type * as lib_timezones from "../lib/timezones.js";
 import type * as likes from "../likes.js";
 import type * as messages from "../messages.js";
 import type * as notifications from "../notifications.js";
@@ -49,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   ageVerification: typeof ageVerification;
   assets: typeof assets;
+  backfillLocale: typeof backfillLocale;
   bookings: typeof bookings;
   calendar: typeof calendar;
   callAccess: typeof callAccess;
@@ -65,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   "lib/geo": typeof lib_geo;
   "lib/schedule": typeof lib_schedule;
   "lib/slots": typeof lib_slots;
+  "lib/timezones": typeof lib_timezones;
   likes: typeof likes;
   messages: typeof messages;
   notifications: typeof notifications;

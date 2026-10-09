@@ -8,6 +8,7 @@ import {
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getCurrentUser, requireAdmin, requireCurrentUser } from "./lib/auth";
+import { validateLocale } from "./lib/timezones";
 
 const CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // a code works for 7 days
 const MAX_ATTEMPTS = 5;
@@ -39,13 +40,20 @@ function safeEqual(a: string, b: string): boolean {
 // ───────────── Step 1: client or girl ─────────────
 
 export const chooseAccountType = mutation({
-  args: { type: v.union(v.literal("client"), v.literal("girl")) },
-  handler: async (ctx, { type }): Promise<null> => {
+  args: {
+    type: v.union(v.literal("client"), v.literal("girl")),
+    // Captured in the same step as client vs girl, so nobody can finish
+    // onboarding without a country and a time zone.
+    country: v.string(),
+    timezone: v.string(),
+  },
+  handler: async (ctx, { type, country, timezone }): Promise<null> => {
     const user = await requireCurrentUser(ctx);
     if (user.role !== "user") {
       throw new Error("Your account type is already set");
     }
-    await ctx.db.patch(user._id, { onboardingChoice: type });
+    const locale = validateLocale(country, timezone);
+    await ctx.db.patch(user._id, { onboardingChoice: type, ...locale });
     return null;
   },
 });

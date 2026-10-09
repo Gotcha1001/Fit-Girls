@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { formatTime } from "@/convex/lib/schedule";
+import { useNow } from "@/hooks/useNow";
 
 type Props = {
   host: {
@@ -7,10 +11,20 @@ type Props = {
     avatarUrl?: string;
     ratePerMinuteCents: number;
     minMinutes: number;
+    country?: string | null;
+    timezone?: string | null;
   };
 };
 
+/** "ZA" -> 🇿🇦 (regional-indicator letters). */
+function flagOf(code: string): string {
+  return code
+    .toUpperCase()
+    .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
 export function HostCard({ host }: Props) {
+  const now = useNow(60_000);
   return (
     <Link
       href={`/hosts/${host._id}`}
@@ -27,11 +41,23 @@ export function HostCard({ host }: Props) {
         )}
       </div>
       <div className="p-4">
-        <h3 className="font-semibold">{host.displayName}</h3>
+        <h3 className="font-semibold">
+          {host.country && (
+            <span className="mr-1.5" title={host.country}>
+              {flagOf(host.country)}
+            </span>
+          )}
+          {host.displayName}
+        </h3>
         <p className="text-sm text-neutral-400">
           R{(host.ratePerMinuteCents / 100).toFixed(2)}/min · min{" "}
           {host.minMinutes} min
         </p>
+        {host.timezone && (
+          <p className="mt-0.5 text-xs text-neutral-500">
+            Her time {formatTime(now, host.timezone)}
+          </p>
+        )}
       </div>
     </Link>
   );

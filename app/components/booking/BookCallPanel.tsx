@@ -7,22 +7,28 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   MIN_MS,
   dayIndexOf,
+  dayShiftLabel,
   durationOptions,
   formatDayLong,
   formatTimeRange,
+  tzLabel,
 } from "@/convex/lib/schedule";
+import { useViewerTz } from "@/hooks/useViewerTz";
 import { Button } from "@/components/ui/button";
-import { GirlCalendar } from "./booking/GirlCalendar";
+import { GirlCalendar } from "./GirlCalendar";
 
 export function BookCallPanel({
   hostId,
+  hostTz,
   minMinutes,
   ratePerMinuteCents,
 }: {
   hostId: Id<"hosts">;
+  hostTz: string;
   minMinutes: number;
   ratePerMinuteCents: number;
 }) {
+  const viewerTz = useViewerTz();
   const [minutes, setMinutes] = useState(minMinutes);
   const [startsAt, setStartsAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,6 +60,13 @@ export function BookCallPanel({
     }
   }
 
+  const endsAt = startsAt == null ? 0 : startsAt + minutes * MIN_MS;
+  const sameZone = viewerTz === hostTz;
+  const shift =
+    startsAt == null || sameZone
+      ? ""
+      : dayShiftLabel(startsAt, hostTz, viewerTz);
+
   return (
     <div className="space-y-6">
       <div>
@@ -74,6 +87,7 @@ export function BookCallPanel({
 
       <GirlCalendar
         hostId={hostId}
+        hostTz={hostTz}
         minutes={minutes}
         selected={startsAt}
         onSelectSlot={setStartsAt}
@@ -83,10 +97,31 @@ export function BookCallPanel({
 
       {startsAt != null && (
         <div className="space-y-2">
-          <p className="text-sm text-zinc-300">
-            {formatDayLong(dayIndexOf(startsAt))} ·{" "}
-            {formatTimeRange(startsAt, startsAt + minutes * MIN_MS)} (SAST)
-          </p>
+          <div className="space-y-1 text-sm text-zinc-300">
+            <p>
+              <span className="text-zinc-500">Her time: </span>
+              {formatDayLong(dayIndexOf(startsAt, hostTz))} ·{" "}
+              {formatTimeRange(startsAt, endsAt, hostTz)}{" "}
+              <span className="text-xs text-zinc-500">
+                ({tzLabel(hostTz, startsAt)})
+              </span>
+            </p>
+            {!sameZone && (
+              <p>
+                <span className="text-zinc-500">Your time: </span>
+                {formatDayLong(dayIndexOf(startsAt, viewerTz))} ·{" "}
+                {formatTimeRange(startsAt, endsAt, viewerTz)}{" "}
+                <span className="text-xs text-zinc-500">
+                  ({tzLabel(viewerTz, startsAt)})
+                </span>
+                {shift && (
+                  <span className="ml-1 rounded bg-amber-500/20 px-1 text-xs text-amber-300">
+                    {shift}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
           <Button className="w-full" onClick={confirm} disabled={busy}>
             {busy ? "Redirecting to payment…" : "Continue to payment"}
           </Button>

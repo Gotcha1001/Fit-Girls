@@ -5,6 +5,7 @@ export type Role = "user" | "host" | "admin";
 export type AccountUser = {
   role: Role;
   onboardingChoice?: "client" | "girl";
+  timezone?: string;
 };
 
 // Open to everyone, signed in or not.
@@ -51,7 +52,17 @@ export function isPublicPath(pathname: string): boolean {
   return PUBLIC.some((p) => matches(pathname, p));
 }
 
+// True when this account should already have a country/time zone but doesn't.
+// Brand-new accounts (role "user" with no choice made yet) are excluded because
+// /choose-role captures their locale. Old accounts, hosts and admins without a
+// zone get sent to /set-locale by RouteGuard.
+export function needsLocale(u: AccountUser): boolean {
+  if (u.timezone) return false;
+  return u.role !== "user" || !!u.onboardingChoice;
+}
+
 export function canAccess(u: AccountUser, pathname: string): boolean {
   if (isPublicPath(pathname)) return true;
+  if (matches(pathname, "/set-locale")) return true; // any signed-in role
   return allowedFor(u).some((p) => matches(pathname, p));
 }

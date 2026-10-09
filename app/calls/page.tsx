@@ -3,6 +3,13 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUserContext } from "@/app/context/UserContext";
+import { useViewerTz } from "@/hooks/useViewerTz";
+import {
+  dayIndexOf,
+  formatDayLong,
+  formatTime,
+  tzCity,
+} from "@/convex/lib/schedule";
 import { useRouter } from "next/navigation";
 import { Loader2, Phone, PhoneOff } from "lucide-react";
 import type { Doc } from "@/convex/_generated/dataModel";
@@ -15,14 +22,18 @@ function CallRow({
   myUserId: string;
 }): React.JSX.Element {
   const router = useRouter();
+  const viewerTz = useViewerTz();
   const respondToCall = useMutation(api.calls.respondToCall);
+
   const otherUserId =
     session.requesterId === myUserId
       ? session.recipientId
       : session.requesterId;
+
   const otherProfile = useQuery(api.profiles.getProfileByUserId, {
     userId: otherUserId,
   });
+
   const isIncoming =
     session.recipientId === myUserId && session.status === "pending";
 
@@ -32,7 +43,7 @@ function CallRow({
         <p className="font-medium">{otherProfile?.displayName ?? "..."}</p>
         <p className="text-xs text-gray-400">
           {session.scheduledFor
-            ? `Scheduled for ${new Date(session.scheduledFor).toLocaleString()}`
+            ? `Scheduled for ${formatDayLong(dayIndexOf(session.scheduledFor, viewerTz))} · ${formatTime(session.scheduledFor, viewerTz)} (your time, ${tzCity(viewerTz)})`
             : "Call now request"}
           {" · "}
           {session.status}

@@ -1,3 +1,4 @@
+// convex/bookings.ts
 import {
   internalMutation,
   internalQuery,
@@ -16,6 +17,7 @@ import {
   MIN_MS,
   dayIndexOf,
   isSlotBookable,
+  isValidTimeZone,
   lastBookableDay,
 } from "./lib/schedule";
 import { clashesWithGap, fitsInRuns, isOnGrid, openRuns } from "./lib/slots";
@@ -23,6 +25,7 @@ import {
   bookingEnd,
   holdsSlot,
   loadWeekly,
+  requireHostTz,
   workingHoursOn,
 } from "./lib/availability";
 
@@ -40,23 +43,16 @@ export const createBooking = mutation({
     }
     // Age gate, enforced server-side (not just by a redirect)
     if (!guest.ageConfirmedAt) throw new Error("Age verification required");
+    // The client's zone is snapshotted on the booking (receipts, reminders).
+    if (!guest.timezone || !isValidTimeZone(guest.timezone)) {
+      throw new Error("Please set your time zone before booking");
+    }
 
     if (!Number.isInteger(minutes) || minutes <= 0 || minutes > MAX_MINUTES) {
       throw new Error(`Duration must be 1-${MAX_MINUTES} minutes`);
     }
 
-    // ── time rules ──
-    const now = Date.now();
-    if (!Number.isFinite(startsAt) || !isOnGrid(startsAt)) {
-      throw new Error("Start time must be on a 5-minute mark");
-    }
-    if (!isSlotBookable(startsAt, now)) {
-      throw new Error("Bookings close 1 hour before the start time");
-    }
-    if (dayIndexOf(startsAt) > lastBookableDay(now)) {
-      throw new Error("That date is too far ahead");
-    }
-
+    // ── host first: every "day" and "hour" below is in HER zone ──
     const host = await ctx.db.get(hostId);
     if (
       !host ||
@@ -66,7 +62,20 @@ export const createBooking = mutation({
     ) {
       throw new Error("Host unavailable");
     }
+    const tz = requireHostTz(host);
     if (minutes < host.minMinutes) throw new Error("Below minimum duration");
+
+    // ── time rules ──
+    const now = Date.now();
+    if (!Number.isFinite(startsAt) || !isOnGrid(startsAt)) {
+      throw new Error("Start time must be on a 5-minute mark");
+    }
+    if (!isSlotBookable(startsAt, now)) {
+      throw new Error("Bookings close 1 hour before the start time");
+    }
+    if (dayIndexOf(startsAt, tz) > lastBookableDay(now, tz)) {
+      throw new Error("That date is too far ahead");
+    }
 
     // No self-booking
     if (host.userId === guest._id) throw new Error("You can't book yourself");
@@ -82,15 +91,16 @@ export const createBooking = mutation({
 
     const endsAt = startsAt + minutes * MIN_MS;
 
-    // ── must be inside her working hours (one unbroken run) ──
-    const dayIndex = dayIndexOf(startsAt);
+    // ── must be inside her working hours (one unbroken run, her local day) ──
+    const dayIndex = dayIndexOf(startsAt, tz);
     const weekly = await loadWeekly(ctx, hostId);
     const hours = await workingHoursOn(ctx, hostId, weekly, dayIndex);
-    if (!fitsInRuns(startsAt, endsAt, openRuns(dayIndex, [...hours]))) {
+    if (!fitsInRuns(startsAt, endsAt, openRuns(dayIndex, [...hours], tz))) {
       throw new Error("That call doesn't fit inside her working hours");
     }
 
     // ── no overlap, and a GAP_MINUTES break on both sides ──
+    // Pure UTC maths: no zone needed from here on.
     // A booking can only matter if it starts within MAX minutes + gap before
     // our start, or before our end + gap.
     const nearby = await ctx.db
@@ -140,6 +150,9 @@ export const createBooking = mutation({
       amountCents,
       ...fees,
       status: "pending_payment",
+      // Snapshots: stay correct even if either person changes zone later.
+      hostTimezone: tz,
+      guestTimezone: guest.timezone,
     });
 
     // Release the slot if payment doesn't arrive
@@ -148,9 +161,11 @@ export const createBooking = mutation({
       internal.bookings.expireIfUnpaid,
       { bookingId },
     );
+
     return bookingId;
   },
 });
+
 export const expireIfUnpaid = internalMutation({
   args: { bookingId: v.id("bookings") },
   handler: async (ctx, { bookingId }) => {
@@ -171,11 +186,9 @@ export const getForCheckout = internalQuery({
     if (booking.status !== "pending_payment") {
       throw new Error("Booking is not awaiting payment");
     }
-
     const guest = await ctx.db.get(booking.guestId);
     if (!guest) throw new Error("Guest not found");
     if (guest.clerkId !== clerkId) throw new Error("Not your booking");
-
     const host = await ctx.db.get(booking.hostId);
     if (!host) throw new Error("Host not found");
     if (host.status !== "approved") throw new Error("Host unavailable");
@@ -198,10 +211,13 @@ export const getMine = query({
   handler: async (ctx, { bookingId: rawId }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
+
     const bookingId = ctx.db.normalizeId("bookings", rawId);
     if (!bookingId) return null;
+
     const booking = await ctx.db.get(bookingId);
     if (!booking) return null;
+
     const guest = await ctx.db.get(booking.guestId);
     const host = await ctx.db.get(booking.hostId);
     if (!guest || !host) return null;
@@ -220,6 +236,10 @@ export const getMine = query({
 
     return {
       ...booking,
+      // The zones the booking was made in; fall back to the current zone for
+      // bookings that predate the snapshot fields.
+      hostTimezone: booking.hostTimezone ?? host.timezone ?? null,
+      guestTimezone: booking.guestTimezone ?? guest.timezone ?? null,
       hostName: host.displayName,
       isGuest,
       isHost,
@@ -271,6 +291,8 @@ export const listMine = query({
             status: b.status,
             amountCents: b.amountCents,
             otherName: host?.displayName ?? "Host",
+            hostTimezone: b.hostTimezone ?? host?.timezone ?? null,
+            guestTimezone: b.guestTimezone ?? user.timezone ?? null,
             callSessionId:
               b.status === "paid" ? await callSessionFor(b._id) : null,
           };
@@ -303,6 +325,8 @@ export const listMine = query({
                 status: b.status,
                 hostShareCents: b.hostShareCents, // what she earns
                 otherName: guest?.name ?? "Guest",
+                hostTimezone: b.hostTimezone ?? myHost.timezone ?? null,
+                guestTimezone: b.guestTimezone ?? guest?.timezone ?? null,
                 callSessionId:
                   b.status === "paid" ? await callSessionFor(b._id) : null,
               };

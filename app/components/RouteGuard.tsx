@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
-import { canAccess, homeFor, isPublicPath } from "@/lib/roles";
+import { canAccess, homeFor, isPublicPath, needsLocale } from "@/lib/roles";
 
 // Sends people away from pages that aren't theirs. This is for a clean
 // experience; the real protection is the checks inside each Convex function.
@@ -33,6 +33,16 @@ export function RouteGuard({
     state = "allow"; // signed-out visitors are handled by your Clerk middleware
   } else if (me === undefined || me === null) {
     state = "wait"; // signed in, waiting for the Convex user row
+  } else if (needsLocale(me)) {
+    // Safety net: accounts with no country/time zone must set one first.
+    if (pathname !== "/set-locale") {
+      state = "redirect";
+      target = "/set-locale";
+    }
+  } else if (pathname === "/set-locale") {
+    // Already has a locale; changing it happens in Settings, with a warning.
+    state = "redirect";
+    target = homeFor(me);
   } else if (pathname === "/") {
     state = "redirect";
     target = homeFor(me);
