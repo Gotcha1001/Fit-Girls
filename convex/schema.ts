@@ -26,6 +26,8 @@ export default defineSchema({
       v.union(v.literal("client"), v.literal("girl")),
     ),
     tokens: v.optional(v.number()),
+    country: v.optional(v.string()), // ISO-3166 alpha-2, "ZA"
+    timezone: v.optional(v.string()),
     appearance: v.optional(
       v.object({
         accent: v.string(),
@@ -178,6 +180,8 @@ export default defineSchema({
     payoutAccountRef: v.optional(v.string()), // Paystack subaccount code
     bankLast4: v.optional(v.string()),
     isOnline: v.boolean(),
+    country: v.optional(v.string()),
+    timezone: v.optional(v.string()),
   })
     .index("by_user", ["userId"])
     .index("by_status", ["status"]),
@@ -193,7 +197,7 @@ export default defineSchema({
 
   hostDayOverrides: defineTable({
     hostId: v.id("hosts"),
-    dayIndex: v.number(), // SAST day index since 1970-01-01
+    dayIndex: v.number(), // day index in the HOST's timezone (since 1970-01-01)
     hours: v.array(v.number()), // empty = fully off that day
   })
     .index("by_host", ["hostId"])
@@ -218,6 +222,8 @@ export default defineSchema({
     ),
     paymentId: v.optional(v.id("payments")),
     roomName: v.optional(v.string()),
+    hostTimezone: v.optional(v.string()), // snapshots for receipts, disputes, reminders
+    guestTimezone: v.optional(v.string()),
   })
     .index("by_host", ["hostId"])
     .index("by_host_time", ["hostId", "startsAt"])

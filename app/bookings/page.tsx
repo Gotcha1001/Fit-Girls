@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { LEGACY_TZ } from "@/convex/lib/schedule";
+import { DualTime } from "../components/DualTime";
 
 type Row = {
   _id: string;
@@ -12,6 +14,8 @@ type Row = {
   minutes: number;
   status: string;
   otherName: string;
+  hostTimezone: string | null;
+  guestTimezone: string | null;
   callSessionId: string | null;
   amountCents?: number; // guest side
   hostShareCents?: number; // host side
@@ -53,7 +57,10 @@ function BookingRow({
   side: "guest" | "host";
   now: number;
 }) {
-  const when = new Date(row.startsAt).toLocaleString();
+  // Bookings made before time zones existed have no snapshot: treat as legacy.
+  const hostTz = row.hostTimezone ?? LEGACY_TZ;
+  const guestTz = row.guestTimezone ?? hostTz;
+
   // Only joinable while the booking window hasn't ended.
   const canJoin =
     row.status === "paid" && Boolean(row.callSessionId) && row.endsAt > now;
@@ -64,8 +71,18 @@ function BookingRow({
         <p className="font-semibold">
           {side === "guest" ? "Call with" : "Booked by"} {row.otherName}
         </p>
+        <DualTime
+          className="my-1 text-neutral-200"
+          ts={row.startsAt}
+          endTs={row.endsAt}
+          hostTz={hostTz}
+          otherTz={guestTz}
+          showDate
+          hostLabel={side === "guest" ? "Her time" : "Your time"}
+          otherLabel={side === "guest" ? "Your time" : "Client's time"}
+        />
         <p className="text-sm text-neutral-400">
-          {when} · {row.minutes} min
+          {row.minutes} min
           {side === "guest" && row.amountCents !== undefined && (
             <> · {rand(row.amountCents)}</>
           )}
@@ -83,6 +100,7 @@ function BookingRow({
           {STATUS_LABEL[row.status] ?? row.status}
         </span>
       </div>
+
       <div className="flex gap-2">
         {canJoin && (
           <Link
@@ -176,12 +194,14 @@ function Section({
 
 export default function BookingsPage() {
   const data = useQuery(api.bookings.listMine);
+
   if (data === undefined) return <p className="p-8">Loading…</p>;
   if (data === null) return <p className="p-8">Please sign in.</p>;
 
   return (
     <main className="mx-auto max-w-2xl space-y-10 p-6">
       <h1 className="text-3xl font-bold">My bookings</h1>
+
       {data.isHost && (
         <Section
           title="Bookings with me"
@@ -190,12 +210,14 @@ export default function BookingsPage() {
           empty="No one has booked you yet."
         />
       )}
+
       <Section
         title={data.isHost ? "Calls I booked" : "My calls"}
         rows={data.asGuest}
         side="guest"
         empty="You haven't booked a call yet."
       />
+
       <Link href="/hosts" className="inline-block underline">
         Browse hosts
       </Link>

@@ -1,153 +1,139 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link"; // NEW
+import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
-  dayStartMs, // NEW
-  formatDayLong,
-  formatHour,
-  formatTime,
-  relativeDayLabel,
-  HOUR_MS, // NEW
   MAX_DAYS_AHEAD,
+  formatDayLong,
+  relativeDayLabel,
 } from "@/convex/lib/schedule";
-import { ALL_HOURS } from "@/convex/lib/slots";
-import { useSastClock } from "@/hooks/useSastClock";
+import { useZonedClock } from "@/hooks/useZonedClock";
+import { useViewerTz } from "@/hooks/useViewerTz";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
-const SLOT_COLORS: Record<string, string> = {
-  open: "bg-emerald-500/20 border-emerald-500/40 text-emerald-100",
-  booked: "bg-rose-500/25 border-rose-500/50 text-rose-100",
-  mine: "bg-sky-500/25 border-sky-500/50 text-sky-100",
-  off: "bg-zinc-800/50 border-zinc-700 text-zinc-500",
-};
-
-// NEW: what to show on a booked slot, by booking status
-const BOOKING_LABEL: Record<string, string> = {
-  paid: "Paid · open to start call",
-  pending_payment: "Awaiting payment",
-  completed: "Completed",
-};
+import { HostDayGrid } from "@/app/components/HostDayGrid";
 
 export default function HostSchedulePage() {
-  const { timeLabel, dayIndex: today, tz } = useSastClock();
-  const [dayIndex, setDayIndex] = useState(today);
-
+  // For a host, her profile zone IS her schedule zone (setLocale keeps them in sync).
+  const hostTz = useViewerTz();
+  const { timeLabel, dayIndex: today, label } = useZonedClock(hostTz);
   const maxDay = today + MAX_DAYS_AHEAD;
-  if (dayIndex < today) {
-    setDayIndex(today);
-  } else if (dayIndex > maxDay) {
-    setDayIndex(maxDay);
-  }
+
+  // null = "follow today", so the view stays right past her midnight.
+  const [picked, setPicked] = useState<number | null>(null);
+  const dayIndex =
+    picked === null ? today : Math.min(Math.max(picked, today), maxDay);
+
+  const [error, setError] = useState<string | null>(null);
 
   const day = useQuery(api.calendar.getMyDay, { dayIndex });
   const setOverride = useMutation(api.calendar.setDayOverride);
   const clearOverride = useMutation(api.calendar.clearDayOverride);
 
-  // CHANGED: map a booking to EVERY hour it covers, not just the start hour
-  const bookingsByHour = useMemo(() => {
-    const map = new Map<number, NonNullable<typeof day>["bookings"][number]>();
-    if (!day) return map;
-    const start = dayStartMs(day.dayIndex);
-    for (const b of day.bookings) {
-      for (const h of ALL_HOURS) {
-        const slotStart = start + h * HOUR_MS;
-        if (b.startsAt < slotStart + HOUR_MS && b.endsAt > slotStart) {
-          map.set(h, b);
-        }
-      }
-    }
-    return map;
-  }, [day]);
-
   function jump(delta: number) {
-    setDayIndex((d) => {
-      const next = d + delta;
-      if (next < today) return today;
-      if (next > maxDay) return maxDay;
-      return next;
-    });
+    setPicked(Math.min(Math.max(dayIndex + delta, today), maxDay));
   }
 
   async function toggleHour(hour: number) {
     if (!day) return;
+    setError(null);
     const next = new Set(day.hours);
     if (next.has(hour)) next.delete(hour);
     else next.add(hour);
-    await setOverride({
-      dayIndex,
-      hours: [...next].sort((a, b) => a - b),
-    });
+    try {
+      await setOverride({
+        dayIndex,
+        hours: [...next].sort((a, b) => a - b),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    }
+  }
+
+  async function reset() {
+    setError(null);
+    try {
+      await clearOverride({ dayIndex });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reset");
+    }
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 pb-16">
-      {/* ...live clock, day flip buttons and clear-override button stay exactly as they are... */}
+      <header className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold text-white">Schedule</h1>
+          <Link
+            href="/host/schedule/weekly"
+            className="text-sm text-pink-300 underline"
+          >
+            Weekly hours →
+          </Link>
+        </div>
+        <p className="text-sm text-zinc-300">
+          All times in your time zone:{" "}
+          <span className="font-semibold">{label}</span> · now{" "}
+          <span className="font-mono font-semibold">{timeLabel}</span>
+        </p>
+      </header>
 
-      {/* Hourly grid */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-        {ALL_HOURS.map((h) => {
-          const state = day?.states[h] ?? "off";
-          const booking = bookingsByHour.get(h);
-
-          // NEW: booked slot = link to that booking, in a new tab
-          if (booking) {
-            const startsHere =
-              booking.startsAt >= dayStartMs(dayIndex) + h * HOUR_MS &&
-              booking.startsAt < dayStartMs(dayIndex) + (h + 1) * HOUR_MS;
-            return (
-              <Link
-                key={h}
-                href={`/bookings/${booking._id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "block rounded-xl border p-3 text-left transition hover:ring-2 hover:ring-white/30",
-                  SLOT_COLORS.booked,
-                )}
-              >
-                <div className="font-mono text-sm font-semibold">
-                  {formatHour(h)}
-                </div>
-                <div className="mt-1 text-xs opacity-80">
-                  {BOOKING_LABEL[booking.status] ?? booking.status}
-                </div>
-                <div className="mt-1 truncate text-xs opacity-90">
-                  {startsHere
-                    ? `${booking.guestName} · ${booking.minutes}m · ${formatTime(booking.startsAt)}`
-                    : `${booking.guestName} (continues)`}
-                </div>
-              </Link>
-            );
-          }
-
-          // unchanged: open / off slots still toggle
-          return (
-            <button
-              key={h}
-              type="button"
-              onClick={() => toggleHour(h)}
-              className={cn(
-                "rounded-xl border p-3 text-left transition hover:ring-2 hover:ring-white/15",
-                SLOT_COLORS[state],
-              )}
-            >
-              <div className="font-mono text-sm font-semibold">
-                {formatHour(h)}
-              </div>
-              <div className="mt-1 text-xs capitalize opacity-80">{state}</div>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={dayIndex <= today}
+          onClick={() => jump(-1)}
+        >
+          ←
+        </Button>
+        <Button
+          size="sm"
+          variant={dayIndex === today ? "default" : "outline"}
+          onClick={() => setPicked(null)}
+        >
+          Today
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={dayIndex >= maxDay}
+          onClick={() => jump(1)}
+        >
+          →
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={dayIndex >= maxDay}
+          onClick={() => jump(7)}
+        >
+          +7 days
+        </Button>
+        <span className="ml-auto text-sm text-zinc-300">
+          {relativeDayLabel(dayIndex, today)} · {formatDayLong(dayIndex)}
+        </span>
       </div>
+
+      {day?.isOverride && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+          <span>This day has a custom override.</span>
+          <Button size="sm" variant="outline" onClick={reset}>
+            Reset to weekly hours
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <HostDayGrid day={day} onToggleHour={toggleHour} />
 
       <p className="text-xs text-zinc-500">
         Tap an open or off slot to change it for this day only (saves as an
-        override). Tap a booked slot to open that booking in a new tab and join
-        the call. Edit your usual weekly hours under Schedule → Weekly hours.
+        override). Tap a booked call to open that booking in a new tab and join
+        the call. Each booking also shows the client&apos;s local time. Edit
+        your usual weekly hours under Schedule → Weekly hours.
       </p>
     </div>
   );

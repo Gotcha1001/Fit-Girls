@@ -8,11 +8,11 @@ import {
 import { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getCurrentUser, requireCurrentUser } from "./lib/auth";
-
+import { isValidTimeZone } from "./lib/schedule";
+import { isValidCountry } from "./lib/timezones";
 // Rate limits in cents per minute: R5 to R100
 const MIN_RATE = 500;
 const MAX_RATE = 10000;
-
 // QueryCtx works for mutations too, because a mutation context is a superset.
 async function userByClerkId(
   ctx: QueryCtx,
@@ -23,7 +23,6 @@ async function userByClerkId(
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
     .unique();
 }
-
 async function myHost(ctx: QueryCtx): Promise<Doc<"hosts">> {
   const user = await requireCurrentUser(ctx);
   const host = await ctx.db
@@ -33,7 +32,6 @@ async function myHost(ctx: QueryCtx): Promise<Doc<"hosts">> {
   if (!host) throw new Error("Save your profile first");
   return host;
 }
-
 // Safe for the browser: never returns the Paystack subaccount code.
 export const getMyHost = query({
   args: {},
@@ -55,10 +53,11 @@ export const getMyHost = query({
       kycStatus: host.kycStatus,
       payoutReady: !!host.payoutAccountRef,
       bankLast4: host.bankLast4 ?? null,
+      timezone: host.timezone ?? null,
+      country: host.country ?? null,
     };
   },
 });
-
 // Step 1 of onboarding: create or update the public profile.
 export const saveProfile = mutation({
   args: {
@@ -71,6 +70,16 @@ export const saveProfile = mutation({
     if (user.role !== "host") {
       throw new Error("Activate your host access first");
     }
+    // Her country and time zone are chosen once (onboarding / settings) and
+    // copied onto the host row, so every booking rule can read host.timezone.
+    if (
+      !isValidCountry(user.country) ||
+      !user.timezone ||
+      !isValidTimeZone(user.timezone)
+    ) {
+      throw new Error("Choose your country and time zone first");
+    }
+    const locale = { country: user.country, timezone: user.timezone };
 
     const displayName = args.displayName.trim();
     const bio = args.bio.trim();
@@ -84,21 +93,19 @@ export const saveProfile = mutation({
       args.ratePerMinuteCents > MAX_RATE
     )
       throw new Error("Rate must be between R5 and R100 per minute");
-
     const existing = await ctx.db
       .query("hosts")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
-
     if (existing) {
       await ctx.db.patch(existing._id, {
         displayName,
         bio,
         ratePerMinuteCents: args.ratePerMinuteCents,
+        ...locale,
       });
       return existing._id;
     }
-
     // The admin already checked her ID when approving her application,
     // so a girl who activated her code is bookable once her payout is set up.
     const application = await ctx.db
@@ -108,7 +115,6 @@ export const saveProfile = mutation({
       .first();
     const preApproved =
       application?.status === "activated" && application.idChecked === true;
-
     return await ctx.db.insert("hosts", {
       userId: user._id,
       displayName,
@@ -119,10 +125,10 @@ export const saveProfile = mutation({
       kycStatus: preApproved ? "verified" : "none",
       payoutProvider: "paystack",
       isOnline: false,
+      ...locale,
     });
   },
 });
-
 // Used by the payout action (the action passes the clerkId it verified).
 export const getHostForPayout = internalQuery({
   args: { clerkId: v.string() },
@@ -137,7 +143,6 @@ export const getHostForPayout = internalQuery({
     return { hostId: host._id, hasPayout: !!host.payoutAccountRef };
   },
 });
-
 export const savePayout = internalMutation({
   args: {
     hostId: v.id("hosts"),
@@ -152,7 +157,6 @@ export const savePayout = internalMutation({
     });
   },
 });
-
 // Bookable hosts only: approved, ID verified, and bank/subaccount set up.
 export const listApproved = query({
   args: {},
@@ -161,11 +165,9 @@ export const listApproved = query({
       .query("hosts")
       .withIndex("by_status", (q) => q.eq("status", "approved"))
       .collect();
-
     const bookable = hosts.filter(
       (h) => h.kycStatus === "verified" && !!h.payoutAccountRef,
     );
-
     return await Promise.all(
       bookable.map(async (h) => ({
         _id: h._id,
@@ -173,11 +175,12 @@ export const listApproved = query({
         avatarUrl: h.avatarId ? await ctx.storage.getUrl(h.avatarId) : null,
         ratePerMinuteCents: h.ratePerMinuteCents,
         minMinutes: h.minMinutes,
+        timezone: h.timezone ?? null,
+        country: h.country ?? null,
       })),
     );
   },
 });
-
 export const getPublic = query({
   // string, not v.id: a malformed ID in the URL should show "not found", not crash the page
   args: { hostId: v.string() },
@@ -201,10 +204,11 @@ export const getPublic = query({
       bio: h.bio,
       ratePerMinuteCents: h.ratePerMinuteCents,
       minMinutes: h.minMinutes,
+      timezone: h.timezone ?? null,
+      country: h.country ?? null,
     };
   },
 });
-
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
@@ -212,7 +216,6 @@ export const generateUploadUrl = mutation({
     return await ctx.storage.generateUploadUrl();
   },
 });
-
 export const setAvatar = mutation({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {

@@ -1,14 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { formatHour, WEEKDAY_LONG } from "@/convex/lib/schedule";
 import { ALL_HOURS } from "@/convex/lib/slots";
+import { useZonedClock } from "@/hooks/useZonedClock";
+import { useViewerTz } from "@/hooks/useViewerTz";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 
 export default function WeeklyHoursPage() {
+  // Hooks stay above the early returns.
+  const hostTz = useViewerTz();
+  const { timeLabel, label } = useZonedClock(hostTz);
+
   const weekly = useQuery(api.calendar.getMyWeeklyHours);
   const setWeekly = useMutation(api.calendar.setWeeklyHours);
 
@@ -38,14 +44,21 @@ export default function WeeklyHoursPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Weekly hours</h1>
         <Button asChild variant="outline" size="sm">
-          <Link href="/schedule">← Day calendar</Link>
+          <Link href="/host/schedule">← Day calendar</Link>
         </Button>
       </div>
 
-      <p className="text-sm text-zinc-400">
-        These are your default open hours. One-day overrides on the day calendar
-        take priority.
-      </p>
+      <div className="space-y-1">
+        <p className="text-sm text-zinc-300">
+          All times in your time zone:{" "}
+          <span className="font-semibold">{label}</span> · now{" "}
+          <span className="font-mono font-semibold">{timeLabel}</span>
+        </p>
+        <p className="text-sm text-zinc-400">
+          These are your default open hours. One-day overrides on the day
+          calendar take priority.
+        </p>
+      </div>
 
       {weekly.map(({ weekday, hours }) => {
         const open = new Set(hours ?? []);
