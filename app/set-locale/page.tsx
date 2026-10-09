@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { LocalePicker, type Locale } from "@/app/components/LocalPicker";
+import { Locale, LocalePicker } from "../components/LocalePicker";
 
 export default function SetLocalePage() {
   const router = useRouter();
