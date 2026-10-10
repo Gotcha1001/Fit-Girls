@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import type { FunctionReturnType } from "convex/server";
+
 import type { api } from "@/convex/_generated/api";
 import {
   HOUR_MS,
@@ -15,16 +16,22 @@ import {
 } from "@/convex/lib/schedule";
 import { ALL_HOURS } from "@/convex/lib/slots";
 import { cn } from "@/lib/utils";
+
 import { HourBar, type BarSegment } from "./HourBar";
 
 type Day = NonNullable<FunctionReturnType<typeof api.calendar.getMyDay>>;
 type DayBooking = Day["bookings"][number];
 
+// rose-* is remapped to the chosen accent in globals.css, so these follow the theme.
+//   open   = dark card, accent border + glow (free to take bookings)
+//   booked = filled with the accent, so it reads differently from "open"
+//   mine   = sky blue (unchanged)
+//   off    = flat grey, no glow
 const SLOT_COLORS: Record<string, string> = {
-  open: "bg-emerald-500/20 border-emerald-500/40 text-emerald-100",
-  booked: "bg-rose-500/25 border-rose-500/50 text-rose-100",
-  mine: "bg-sky-500/25 border-sky-500/50 text-sky-100",
-  off: "bg-zinc-800/50 border-zinc-700 text-zinc-500",
+  open: "accent-card bg-zinc-900/60 text-rose-50",
+  booked: "accent-card bg-rose-600/40 text-white",
+  mine: "border-sky-500/50 bg-sky-500/25 text-sky-100",
+  off: "border-zinc-700 bg-zinc-800/50 text-zinc-500",
 };
 
 const BOOKING_LABEL: Record<string, string> = {
@@ -132,7 +139,7 @@ export function HostDayGrid({
                         href={`/bookings/${b._id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block rounded-md bg-black/20 px-2 py-1.5 text-xs transition hover:ring-1 hover:ring-white/30"
+                        className="block rounded-md bg-black/25 px-2 py-1.5 text-xs transition hover:ring-1 hover:ring-rose-300/70"
                       >
                         <span className="font-mono font-semibold">
                           {formatTimeRange(b.startsAt, b.endsAt, tz)}

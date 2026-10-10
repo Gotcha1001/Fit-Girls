@@ -188,6 +188,7 @@ export const listApproved = query({
       bookable.map(async (h) => ({
         _id: h._id,
         displayName: h.displayName,
+        bio: h.bio, // <-- add this line
         avatarUrl: h.avatarId ? await ctx.storage.getUrl(h.avatarId) : null,
         ratePerMinuteCents: h.ratePerMinuteCents,
         minMinutes: h.minMinutes,

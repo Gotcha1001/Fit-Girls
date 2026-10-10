@@ -5,6 +5,7 @@ import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { ApplicationIdPhotos } from "@/app/components/ApplicationIdPhotos";
 
 export default function AdminPage(): React.JSX.Element {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -147,6 +148,15 @@ export default function AdminPage(): React.JSX.Element {
                     }`}
               </p>
             </div>
+
+            {/* ID photo + selfie, only while she's waiting for review.
+                They are deleted automatically once you approve. */}
+            {a.status === "pending" && (
+              <ApplicationIdPhotos
+                applicationId={a._id}
+                uploaded={a.idUploaded}
+              />
+            )}
 
             {a.status === "pending" && (
               <label className="flex items-center gap-2 text-sm">

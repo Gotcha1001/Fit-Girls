@@ -287,6 +287,8 @@ export default defineSchema({
     codeHash: v.optional(v.string()),
     codeExpiresAt: v.optional(v.number()),
     codeAttempts: v.number(),
+    idDocumentId: v.optional(v.id("_storage")),
+    selfieId: v.optional(v.id("_storage")),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
   })

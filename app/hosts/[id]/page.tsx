@@ -6,7 +6,6 @@ import { api } from "@/convex/_generated/api";
 import { tzLabel } from "@/convex/lib/schedule";
 import { useNow } from "@/hooks/useNow";
 import { useViewerTz } from "@/hooks/useViewerTz";
-
 import { GiftPicker } from "@/app/components/GiftPicker";
 import { DualClock } from "@/app/components/DualClock";
 import { BookCallPanel } from "@/app/components/booking/BookCallPanel";
@@ -15,6 +14,7 @@ export default function HostProfilePage() {
   const { id } = useParams<{ id: string }>();
   const host = useQuery(api.hosts.getPublic, { hostId: id });
   const me = useQuery(api.user.getMe);
+
   // Hooks must stay above the early returns below.
   const viewerTz = useViewerTz();
   const now = useNow(60_000);
@@ -34,17 +34,16 @@ export default function HostProfilePage() {
           <img
             src={host.avatarUrl}
             alt={host.displayName}
-            className="w-full rounded-2xl"
+            className="accent-card w-full rounded-2xl border"
           />
         )}
         <h1 className="mt-4 text-3xl font-bold">{host.displayName}</h1>
         {host.bio && <p className="mt-2 text-neutral-300">{host.bio}</p>}
       </div>
 
-      {/* Booking — calendar + duration + pay */}
+      {/* Booking: calendar + duration + pay */}
       <div>
         <h2 className="mb-2 text-lg font-semibold">Book a call</h2>
-
         {host.timezone ? (
           <>
             <h2 className="mb-3 text-sm font-medium text-amber-300">
@@ -74,7 +73,7 @@ export default function HostProfilePage() {
         )}
       </div>
 
-      {/* Gifts: stacked under booking on mobile, full-width row below both columns on desktop */}
+      {/* Gifts: stacked under booking on mobile, full-width row below on desktop */}
       {canGift && (
         <div className="md:col-span-2">
           <GiftPicker toUserId={host.userId} />

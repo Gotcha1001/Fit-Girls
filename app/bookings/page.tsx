@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import { LEGACY_TZ } from "@/convex/lib/schedule";
+import { cn } from "@/lib/utils";
+
 import { DualTime } from "../components/DualTime";
 
 type Row = {
@@ -28,6 +31,10 @@ const STATUS_LABEL: Record<string, string> = {
   refunded: "Refunded",
 };
 
+// Status pills keep their own colours (yellow / green / grey) because they
+// carry meaning. Everything else follows the accent: rose-* is remapped to the
+// chosen accent in globals.css, and "accent-card" adds the border + glow
+// (glow needs data-glow="on" on <html>).
 const STATUS_STYLE: Record<string, string> = {
   pending_payment: "bg-yellow-500/10 text-yellow-300",
   paid: "bg-green-500/10 text-green-300",
@@ -52,10 +59,13 @@ function BookingRow({
   row,
   side,
   now,
+  upcoming,
 }: {
   row: Row;
   side: "guest" | "host";
   now: number;
+  /** Upcoming bookings get the themed glow; past ones stay quiet. */
+  upcoming: boolean;
 }) {
   // Bookings made before time zones existed have no snapshot: treat as legacy.
   const hostTz = row.hostTimezone ?? LEGACY_TZ;
@@ -66,11 +76,19 @@ function BookingRow({
     row.status === "paid" && Boolean(row.callSessionId) && row.endsAt > now;
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
+    <li
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4",
+        upcoming
+          ? "accent-card bg-zinc-900/60"
+          : "border-rose-500/20 bg-white/5 opacity-80",
+      )}
+    >
       <div className="min-w-0">
         <p className="font-semibold">
           {side === "guest" ? "Call with" : "Booked by"} {row.otherName}
         </p>
+
         <DualTime
           className="my-1 text-neutral-200"
           ts={row.startsAt}
@@ -81,6 +99,7 @@ function BookingRow({
           hostLabel={side === "guest" ? "Her time" : "Your time"}
           otherLabel={side === "guest" ? "Your time" : "Client's time"}
         />
+
         <p className="text-sm text-neutral-400">
           {row.minutes} min
           {side === "guest" && row.amountCents !== undefined && (
@@ -92,6 +111,7 @@ function BookingRow({
               <> · you earn {rand(row.hostShareCents)}</>
             )}
         </p>
+
         <span
           className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs ${
             STATUS_STYLE[row.status] ?? ""
@@ -105,14 +125,14 @@ function BookingRow({
         {canJoin && (
           <Link
             href={`/call/${row.callSessionId}`}
-            className="rounded-lg bg-pink-600 px-4 py-2 text-sm font-semibold"
+            className="accent-card rounded-lg border bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-500"
           >
             Join call
           </Link>
         )}
         <Link
           href={`/bookings/${row._id}`}
-          className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+          className="rounded-lg border border-rose-500/60 px-4 py-2 text-sm text-white transition-colors hover:bg-rose-600/20"
         >
           Details
         </Link>
@@ -160,9 +180,9 @@ function Section({
       )}
 
       {upcoming.length > 0 && (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {upcoming.map((r) => (
-            <BookingRow key={r._id} row={r} side={side} now={now} />
+            <BookingRow key={r._id} row={r} side={side} now={now} upcoming />
           ))}
         </ul>
       )}
@@ -173,16 +193,23 @@ function Section({
             type="button"
             onClick={() => setShowPast((v) => !v)}
             aria-expanded={showPast}
-            className="text-sm text-neutral-400 underline hover:text-neutral-200"
+            className="text-sm text-rose-300 underline hover:text-rose-200"
           >
             {showPast
               ? "Hide past bookings"
               : `Show past bookings (${past.length})`}
           </button>
+
           {showPast && (
             <ul className="space-y-2">
               {past.map((r) => (
-                <BookingRow key={r._id} row={r} side={side} now={now} />
+                <BookingRow
+                  key={r._id}
+                  row={r}
+                  side={side}
+                  now={now}
+                  upcoming={false}
+                />
               ))}
             </ul>
           )}
@@ -218,7 +245,10 @@ export default function BookingsPage() {
         empty="You haven't booked a call yet."
       />
 
-      <Link href="/hosts" className="inline-block underline">
+      <Link
+        href="/hosts"
+        className="inline-block text-rose-300 underline hover:text-rose-200"
+      >
         Browse hosts
       </Link>
     </main>
