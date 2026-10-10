@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import {
   MAX_DAYS_AHEAD,
@@ -11,8 +12,43 @@ import {
 } from "@/convex/lib/schedule";
 import { useZonedClock } from "@/hooks/useZonedClock";
 import { useViewerTz } from "@/hooks/useViewerTz";
-import { Button } from "@/components/ui/button";
 import { HostDayGrid } from "@/app/components/HostDayGrid";
+import { cn } from "@/lib/utils";
+
+/**
+ * Themed pill button. A plain <button> (not shadcn Button) so the accent
+ * border can't be overridden by a variant's own border colour.
+ * rose-* follows the chosen accent via globals.css.
+ */
+function NavBtn({
+  active = false,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "accent-card rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+        "disabled:pointer-events-none disabled:opacity-40",
+        active
+          ? "bg-rose-600 text-white hover:bg-rose-500"
+          : "bg-zinc-900/60 text-zinc-100 hover:bg-rose-600/20",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function HostSchedulePage() {
   // For a host, her profile zone IS her schedule zone (setLocale keeps them in sync).
@@ -62,12 +98,12 @@ export default function HostSchedulePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 pb-16">
-      <header className="space-y-2">
+      <header className="accent-card space-y-2 rounded-xl border bg-zinc-900/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-semibold text-white">Schedule</h1>
           <Link
             href="/host/schedule/weekly"
-            className="text-sm text-pink-300 underline"
+            className="text-sm text-rose-300 underline hover:text-rose-200"
           >
             Weekly hours →
           </Link>
@@ -80,37 +116,18 @@ export default function HostSchedulePage() {
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={dayIndex <= today}
-          onClick={() => jump(-1)}
-        >
+        <NavBtn disabled={dayIndex <= today} onClick={() => jump(-1)}>
           ←
-        </Button>
-        <Button
-          size="sm"
-          variant={dayIndex === today ? "default" : "outline"}
-          onClick={() => setPicked(null)}
-        >
+        </NavBtn>
+        <NavBtn active={dayIndex === today} onClick={() => setPicked(null)}>
           Today
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={dayIndex >= maxDay}
-          onClick={() => jump(1)}
-        >
+        </NavBtn>
+        <NavBtn disabled={dayIndex >= maxDay} onClick={() => jump(1)}>
           →
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={dayIndex >= maxDay}
-          onClick={() => jump(7)}
-        >
+        </NavBtn>
+        <NavBtn disabled={dayIndex >= maxDay} onClick={() => jump(7)}>
           +7 days
-        </Button>
+        </NavBtn>
         <span className="ml-auto text-sm text-zinc-300">
           {relativeDayLabel(dayIndex, today)} · {formatDayLong(dayIndex)}
         </span>
@@ -119,9 +136,7 @@ export default function HostSchedulePage() {
       {day?.isOverride && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
           <span>This day has a custom override.</span>
-          <Button size="sm" variant="outline" onClick={reset}>
-            Reset to weekly hours
-          </Button>
+          <NavBtn onClick={reset}>Reset to weekly hours</NavBtn>
         </div>
       )}
 

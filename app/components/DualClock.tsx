@@ -20,7 +20,7 @@ export function DualClock({
   const now = useNow(10_000);
   const same = primaryTz === otherTz;
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm">
+    <div className="accent-card flex flex-wrap gap-x-6 gap-y-1 rounded-xl border bg-white/5 px-4 py-2 text-sm">
       <p>
         <span className="text-neutral-400">{primaryLabel}</span>{" "}
         <span className="font-semibold">{formatTime(now, primaryTz)}</span>{" "}

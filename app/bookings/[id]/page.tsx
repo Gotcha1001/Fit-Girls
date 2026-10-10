@@ -3,12 +3,19 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import { LEGACY_TZ, MIN_MS } from "@/convex/lib/schedule";
 import { DualTime } from "@/app/components/DualTime";
 
+// rose-* is remapped to the chosen accent in globals.css, and "accent-card"
+// adds the themed border + glow (glow needs data-glow="on" on <html>).
+// Status messages keep their own colours (yellow / green / red / grey) because
+// they carry meaning.
+
 export default function BookingPage() {
   const { id } = useParams<{ id: string }>();
+
   // Live query: the webhook flips the status and this page updates by itself.
   // We never mark anything paid from the Paystack redirect.
   const booking = useQuery(api.bookings.getMine, { bookingId: id });
@@ -24,7 +31,7 @@ export default function BookingPage() {
     <main className="mx-auto max-w-lg space-y-4 p-6">
       <h1 className="text-2xl font-bold">Booking with {booking.hostName}</h1>
 
-      <div className="space-y-1">
+      <div className="accent-card space-y-1 rounded-xl border bg-zinc-900/60 p-4">
         <DualTime
           ts={booking.startsAt}
           endTs={endsAt}
@@ -38,7 +45,7 @@ export default function BookingPage() {
       </div>
 
       {booking.status === "pending_payment" && (
-        <div className="space-y-2 rounded-lg bg-yellow-500/10 p-4 text-yellow-300">
+        <div className="space-y-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-300">
           <p>
             {booking.isHost
               ? "Waiting for the guest to pay."
@@ -54,14 +61,14 @@ export default function BookingPage() {
       )}
 
       {booking.status === "paid" && (
-        <div className="space-y-2">
-          <p className="rounded-lg bg-green-500/10 p-4 text-green-300">
+        <div className="space-y-3">
+          <p className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">
             Payment received. The call opens 5 minutes before the start time.
           </p>
           {booking.callSessionId ? (
             <Link
               href={`/call/${booking.callSessionId}`}
-              className="block rounded-xl bg-pink-600 py-3 text-center font-semibold"
+              className="accent-card block rounded-xl border bg-rose-600 py-3 text-center font-semibold text-white transition-colors hover:bg-rose-500"
             >
               Join call
             </Link>
@@ -84,7 +91,10 @@ export default function BookingPage() {
           <p className="text-red-400">
             This booking expired because payment wasn&apos;t received in time.
           </p>
-          <Link href="/hosts" className="underline">
+          <Link
+            href="/hosts"
+            className="text-rose-300 underline hover:text-rose-200"
+          >
             Back to hosts
           </Link>
         </div>
@@ -93,6 +103,13 @@ export default function BookingPage() {
       {booking.status === "refunded" && (
         <p className="text-neutral-300">This booking was refunded.</p>
       )}
+
+      <Link
+        href="/bookings"
+        className="inline-block text-sm text-rose-300 underline hover:text-rose-200"
+      >
+        ← All bookings
+      </Link>
     </main>
   );
 }

@@ -22,6 +22,7 @@ import type * as hostAccess from "../hostAccess.js";
 import type * as hostPayout from "../hostPayout.js";
 import type * as hosts from "../hosts.js";
 import type * as http from "../http.js";
+import type * as idDocuments from "../idDocuments.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_fees from "../lib/fees.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   hostPayout: typeof hostPayout;
   hosts: typeof hosts;
   http: typeof http;
+  idDocuments: typeof idDocuments;
   "lib/auth": typeof lib_auth;
   "lib/availability": typeof lib_availability;
   "lib/fees": typeof lib_fees;

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { IdUploadField } from "@/app/components/IdUploadField";
 
 const field =
   "w-full rounded-lg bg-neutral-900 p-2 focus:outline-none focus:ring-2 focus:ring-pink-600";
@@ -22,6 +24,8 @@ export default function BecomeAHostPage() {
   const [contact, setContact] = useState("");
   const [message, setMessage] = useState("");
   const [over18, setOver18] = useState(false);
+  const [idDoc, setIdDoc] = useState<Id<"_storage"> | null>(null);
+  const [selfie, setSelfie] = useState<Id<"_storage"> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   if (app === undefined) return <p className="p-8">Loading…</p>;
@@ -52,9 +56,20 @@ export default function BecomeAHostPage() {
   async function onApply(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    if (!idDoc || !selfie) {
+      return setFormError(
+        "Upload both your ID photo and your selfie holding it.",
+      );
+    }
     setBusy(true);
     try {
-      await submit({ fullName, contact: contact || undefined, message });
+      await submit({
+        fullName,
+        contact: contact || undefined,
+        message,
+        idDocumentId: idDoc,
+        selfieId: selfie,
+      });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -140,6 +155,22 @@ export default function BecomeAHostPage() {
               maxLength={500}
             />
           </label>
+
+          <IdUploadField
+            label="Photo of your ID or passport"
+            hint="The whole document, with all details readable."
+            onUploaded={setIdDoc}
+          />
+          <IdUploadField
+            label="Selfie holding your ID"
+            hint="Your face and the ID in the same photo."
+            onUploaded={setSelfie}
+          />
+          <p className="text-xs text-neutral-400">
+            Only our admin team can see these photos. They&apos;re deleted if
+            your application isn&apos;t approved.
+          </p>
+
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
@@ -152,7 +183,7 @@ export default function BecomeAHostPage() {
           </label>
           {formError && <p className="text-sm text-red-400">{formError}</p>}
           <button
-            disabled={busy || !over18}
+            disabled={busy || !over18 || !idDoc || !selfie}
             className="w-full rounded-xl bg-pink-600 py-3 font-semibold disabled:opacity-50"
           >
             Submit application

@@ -9,6 +9,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getCurrentUser, requireAdmin, requireCurrentUser } from "./lib/auth";
 import { validateLocale } from "./lib/timezones";
+import { assertValidIdImage } from "./idDocuments";
 
 const CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // a code works for 7 days
 const MAX_ATTEMPTS = 5;
@@ -75,6 +76,9 @@ export const myApplication = query({
     return {
       status: app.status,
       note: app.note ?? null,
+      // Her own sign-up answers, used to pre-fill the host profile form.
+      fullName: app.fullName,
+      message: app.message,
       codeExpired:
         app.status === "approved" &&
         !!app.codeExpiresAt &&
@@ -88,6 +92,9 @@ export const submitApplication = mutation({
     fullName: v.string(),
     contact: v.optional(v.string()),
     message: v.string(),
+    // Uploaded first via idDocuments.generateIdUploadUrl, private storage.
+    idDocumentId: v.id("_storage"),
+    selfieId: v.id("_storage"),
   },
   handler: async (ctx, args): Promise<null> => {
     const user = await requireCurrentUser(ctx);
@@ -117,6 +124,10 @@ export const submitApplication = mutation({
     if (message.length > 500)
       throw new Error("Message must be 500 characters or fewer");
 
+    // Both photos must exist in storage and be real, reasonably sized images.
+    await assertValidIdImage(ctx, args.idDocumentId);
+    await assertValidIdImage(ctx, args.selfieId);
+
     await ctx.db.insert("hostApplications", {
       userId: user._id,
       fullName,
@@ -125,6 +136,8 @@ export const submitApplication = mutation({
       status: "pending",
       codeAttempts: 0,
       createdAt: Date.now(),
+      idDocumentId: args.idDocumentId,
+      selfieId: args.selfieId,
     });
     return null;
   },
@@ -156,6 +169,8 @@ export const listApplications = query({
           message: a.message,
           email: user?.email ?? "",
           idChecked: a.idChecked ?? false,
+          // true when she uploaded both photos (older applications may not have)
+          idUploaded: !!a.idDocumentId && !!a.selfieId,
           codeExpiresAt: a.codeExpiresAt ?? null,
           createdAt: a.createdAt,
         };
@@ -176,11 +191,18 @@ export const rejectApplication = mutation({
     if (app.status !== "pending" && app.status !== "approved") {
       throw new Error("This application can't be rejected any more");
     }
+
+    // Don't keep ID photos of people we turned down.
+    if (app.idDocumentId) await ctx.storage.delete(app.idDocumentId);
+    if (app.selfieId) await ctx.storage.delete(app.selfieId);
+
     await ctx.db.patch(applicationId, {
       status: "rejected",
       note: note?.trim().slice(0, 200) || undefined,
       codeHash: undefined,
       codeExpiresAt: undefined,
+      idDocumentId: undefined,
+      selfieId: undefined,
       decidedAt: Date.now(),
     });
     return null;
@@ -213,12 +235,20 @@ export const storeCode = internalMutation({
     if (app.status !== "pending" && app.status !== "approved") {
       throw new Error("This application can't get a code");
     }
+    // The admin has reviewed her ID. Delete the photos from storage now so we
+    // don't hold on to sensitive documents (and don't pay to store them).
+    // idChecked + decidedAt remain as the record that the check happened.
+    if (app.idDocumentId) await ctx.storage.delete(app.idDocumentId);
+    if (app.selfieId) await ctx.storage.delete(app.selfieId);
+
     await ctx.db.patch(applicationId, {
       status: "approved",
       idChecked: true,
       codeHash,
       codeExpiresAt: expiresAt,
       codeAttempts: 0,
+      idDocumentId: undefined,
+      selfieId: undefined,
       decidedAt: Date.now(),
     });
     return null;

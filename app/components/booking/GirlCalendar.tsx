@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -25,6 +26,7 @@ import { useZonedClock } from "@/hooks/useZonedClock";
 import { useViewerTz } from "@/hooks/useViewerTz";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
 import { HourBar, type BarSegment } from "../HourBar";
 
 type Props = {
@@ -205,18 +207,20 @@ export function GirlCalendar({
                   : isWorking
                     ? "No times left"
                     : "Closed";
+
             const free: BarSegment[] = slots.map((s) => ({
               startsAt: s,
               endsAt: s + minutes * MIN_MS,
               tone: "free",
             }));
+
             return (
               <div
                 key={h}
                 className={cn(
                   "rounded-xl border p-3",
                   isWorking
-                    ? "border-white/10 bg-zinc-900/60"
+                    ? "accent-card bg-zinc-900/60"
                     : "border-zinc-800 bg-zinc-950/60",
                 )}
               >
@@ -231,11 +235,13 @@ export function GirlCalendar({
                   </span>
                   <span className="text-[11px] text-zinc-500">{status}</span>
                 </div>
+
                 <HourBar
                   hourStart={hourStart}
                   segments={[...view.booked, ...free, ...selectedSegment]}
                   closed={!isWorking}
                 />
+
                 {slots.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {slots.map((s) => {
@@ -252,8 +258,8 @@ export function GirlCalendar({
                           className={cn(
                             "rounded-lg px-2.5 py-1.5 text-left text-sm font-medium leading-tight transition",
                             isSelected
-                              ? "bg-pink-600 text-white ring-2 ring-pink-300"
-                              : "bg-emerald-600 text-white hover:bg-emerald-500",
+                              ? "bg-rose-600 text-white ring-2 ring-white"
+                              : "border border-rose-500/60 bg-rose-600/15 text-white hover:bg-rose-600/35",
                           )}
                         >
                           {formatTime(s, tz)}
@@ -279,7 +285,7 @@ export function GirlCalendar({
 
       <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="inline-block h-2 w-2 rounded-full bg-rose-500/70" />
           Free call time
         </span>
         <span className="flex items-center gap-1.5">
@@ -291,7 +297,7 @@ export function GirlCalendar({
           Your booking
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-pink-500" />
+          <span className="inline-block h-2 w-2 rounded-full bg-white" />
           Selected
         </span>
         <span className="flex items-center gap-1.5">
