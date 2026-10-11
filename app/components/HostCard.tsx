@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { formatTime } from "@/convex/lib/schedule";
+import { currencyForCountry } from "@/convex/lib/currency";
 import { useNow } from "@/hooks/useNow";
+import { useMoney } from "@/hooks/useMoney";
 
 type Props = {
   host: {
@@ -26,6 +28,10 @@ function flagOf(code: string): string {
 
 export function HostCard({ host }: Props) {
   const now = useNow(60_000);
+  // Her rate is in her currency (from her country); show it in the viewer's.
+  const { show } = useMoney();
+  const hostCurrency = currencyForCountry(host.country);
+
   return (
     <Link
       href={`/hosts/${host._id}`}
@@ -49,7 +55,7 @@ export function HostCard({ host }: Props) {
           <span className="truncate">{host.displayName}</span>
         </h3>
         <p className="text-sm text-neutral-400">
-          R{(host.ratePerMinuteCents / 100).toFixed(2)}/min
+          {show(host.ratePerMinuteCents, hostCurrency)}/min
         </p>
         {host.bio && (
           <p className="mt-2 line-clamp-3 text-sm text-neutral-300">

@@ -7,24 +7,20 @@ import { Loader2, Lock, Trash2 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { processSecretPhoto } from "@/lib/watermark";
+import {
+  currencySymbol,
+  formatMoney,
+  fromMinor,
+  minorDigits,
+  toMinor,
+} from "@/convex/lib/currency";
 
-// Keep these in step with convex/secretPhotos.ts (prices are entered in rand,
-// stored in cents).
+// Keep these in step with convex/secretPhotos.ts. Prices are typed in HER
+// currency (chosen by her country) and stored in that currency's minor units.
+// The allowed range comes from the server, already converted to her currency.
 const MAX_PHOTOS = 5;
-const MIN_PRICE = 10;
-const MAX_PRICE = 500;
-const MAX_BUNDLE_PRICE = 2500;
 const MIN_BUNDLE_PHOTOS = 2;
-const DEFAULT_PRICE = "50";
 const HOST_SHARE_PCT = 80; // she keeps 80%, the platform 20%
-
-const rand = (cents: number): string =>
-  `R${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
-const toCents = (r: string): number => Math.round(Number(r) * 100);
-const yourShare = (r: string): string =>
-  Number.isFinite(Number(r)) && Number(r) > 0
-    ? rand(Math.round((toCents(r) * HOST_SHARE_PCT) / 100))
-    : "R0";
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
 
 // rose-* follows the chosen accent; "accent-card" adds the themed border + glow.
@@ -48,6 +44,7 @@ function errorMessage(err: unknown): string {
 function PhotoTile({
   id,
   url,
+  currency,
   priceCents,
   sales,
   earnedCents,
@@ -55,6 +52,7 @@ function PhotoTile({
 }: {
   id: Id<"secretPhotos">;
   url: string | null;
+  currency: string;
   priceCents: number;
   sales: number;
   earnedCents: number;
@@ -62,15 +60,15 @@ function PhotoTile({
 }): React.JSX.Element {
   const updatePrice = useMutation(api.secretPhotos.updatePrice);
   const remove = useMutation(api.secretPhotos.remove);
-  const [value, setValue] = useState(String(priceCents / 100));
+  const [value, setValue] = useState(fromMinor(priceCents, currency));
   const [busy, setBusy] = useState(false);
-  const dirty = toCents(value) !== priceCents;
+  const dirty = toMinor(value, currency) !== priceCents;
 
   async function save() {
     setBusy(true);
     onError("");
     try {
-      await updatePrice({ photoId: id, priceCents: toCents(value) });
+      await updatePrice({ photoId: id, priceCents: toMinor(value, currency) });
     } catch (e) {
       onError(errorMessage(e));
     } finally {
@@ -111,15 +109,16 @@ function PhotoTile({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-sm font-semibold text-rose-300">R</span>
+        <span className="shrink-0 text-sm font-semibold text-rose-300">
+          {currencySymbol(currency)}
+        </span>
         <input
           type="number"
-          min={MIN_PRICE}
-          max={MAX_PRICE}
-          step={1}
+          min={0}
+          step={1 / 10 ** minorDigits(currency)}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          aria-label="Price in rand"
+          aria-label={`Price in ${currency}`}
           className={`${field} w-full py-1 text-sm`}
         />
         <button
@@ -134,7 +133,7 @@ function PhotoTile({
 
       <div className="flex items-center justify-between text-xs text-neutral-400">
         <span>
-          {sales} sold · you earned {rand(earnedCents)}
+          {sales} sold · you earned {formatMoney(earnedCents, currency)}
         </span>
         <button
           type="button"
@@ -158,7 +157,7 @@ export default function HostPhotosPage(): React.JSX.Element {
   const setBundlePrice = useMutation(api.secretPhotos.setBundlePrice);
 
   const fileRef = useRef<HTMLInputElement>(null);
-  const [price, setPrice] = useState(DEFAULT_PRICE);
+  const [price, setPrice] = useState("");
   const [bundleInput, setBundleInput] = useState<string | null>(null); // null = show saved value
   const [busy, setBusy] = useState(false);
   const [bundleBusy, setBundleBusy] = useState(false);
@@ -179,11 +178,18 @@ export default function HostPhotosPage(): React.JSX.Element {
     );
   }
 
-  const { photos, bundlePriceCents, individualTotalCents } = data;
+  const { photos, bundlePriceCents, individualTotalCents, currency } = data;
+  const photoLimits = data.photoLimits;
+  const bundleLimits = data.bundleLimits;
+  const money = (minor: number): string => formatMoney(minor, currency);
+  const yourShare = (typed: string): string =>
+    Number.isFinite(Number(typed)) && Number(typed) > 0
+      ? money(Math.round((toMinor(typed, currency) * HOST_SHARE_PCT) / 100))
+      : money(0);
   const full = photos.length >= MAX_PHOTOS;
   const canBundle = photos.length >= MIN_BUNDLE_PHOTOS;
   const savedBundle =
-    bundlePriceCents === null ? "" : String(bundlePriceCents / 100);
+    bundlePriceCents === null ? "" : fromMinor(bundlePriceCents, currency);
   const bundleValue = bundleInput ?? savedBundle;
   const bundleDirty = bundleInput !== null && bundleInput !== savedBundle;
 
@@ -193,9 +199,11 @@ export default function HostPhotosPage(): React.JSX.Element {
     setError("");
     setDone("");
 
-    const cents = toCents(price);
-    if (!(cents >= MIN_PRICE * 100 && cents <= MAX_PRICE * 100)) {
-      setError(`Set a price between R${MIN_PRICE} and R${MAX_PRICE} first.`);
+    const cents = toMinor(price, currency);
+    if (!(cents >= photoLimits.min && cents <= photoLimits.max)) {
+      setError(
+        `Set a price between ${money(photoLimits.min)} and ${money(photoLimits.max)} first.`,
+      );
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
@@ -249,7 +257,9 @@ export default function HostPhotosPage(): React.JSX.Element {
     setDone("");
     setBundleBusy(true);
     try {
-      await setBundlePrice({ priceCents: clear ? null : toCents(bundleValue) });
+      await setBundlePrice({
+        priceCents: clear ? null : toMinor(bundleValue, currency),
+      });
       setBundleInput(null);
       setDone(clear ? "Bundle removed." : "Bundle price saved.");
     } catch (err) {
@@ -310,19 +320,20 @@ export default function HostPhotosPage(): React.JSX.Element {
           <div className="flex flex-wrap items-end gap-4">
             <label className="block">
               <span className="mb-1 block text-sm font-medium">
-                Price (rand)
+                Price ({currency})
               </span>
               <input
                 type="number"
-                min={MIN_PRICE}
-                max={MAX_PRICE}
-                step={1}
+                min={0}
+                step={1 / 10 ** minorDigits(currency)}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
+                placeholder={fromMinor(photoLimits.min, currency)}
                 className={`${field} w-28`}
               />
               <span className="mt-1 block text-xs text-neutral-500">
-                You get {yourShare(price)}
+                You get {yourShare(price)} · allowed {money(photoLimits.min)} to{" "}
+                {money(photoLimits.max)}
               </span>
             </label>
             <label className="block">
@@ -365,7 +376,7 @@ export default function HostPhotosPage(): React.JSX.Element {
               One price for all {photos.length} photos. Buying them one by one
               costs{" "}
               <span className="font-semibold text-rose-300">
-                {rand(individualTotalCents)}
+                {money(individualTotalCents)}
               </span>
               , so a bundle price below that gives clients a saving. The bundle
               never costs a client more than buying the photos separately.
@@ -373,20 +384,20 @@ export default function HostPhotosPage(): React.JSX.Element {
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium">
-                  Bundle price (rand)
+                  Bundle price ({currency})
                 </span>
                 <input
                   type="number"
-                  min={MIN_PRICE}
-                  max={MAX_BUNDLE_PRICE}
-                  step={1}
+                  min={0}
+                  step={1 / 10 ** minorDigits(currency)}
                   value={bundleValue}
                   placeholder="No bundle"
                   onChange={(e) => setBundleInput(e.target.value)}
                   className={`${field} w-36`}
                 />
                 <span className="mt-1 block text-xs text-neutral-500">
-                  You get {yourShare(bundleValue)}
+                  You get {yourShare(bundleValue)} · up to{" "}
+                  {money(bundleLimits.max)}
                 </span>
               </label>
               <button
@@ -433,6 +444,7 @@ export default function HostPhotosPage(): React.JSX.Element {
                 key={p._id}
                 id={p._id}
                 url={p.url}
+                currency={currency}
                 priceCents={p.priceCents}
                 sales={p.sales}
                 earnedCents={p.earnedCents}

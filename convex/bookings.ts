@@ -28,6 +28,12 @@ import {
   requireHostTz,
   workingHoursOn,
 } from "./lib/availability";
+import { loadRates } from "./lib/fxRates";
+import {
+  CHARGE_CURRENCY,
+  convertMinor,
+  currencyForCountry,
+} from "./lib/currency";
 
 const MAX_MINUTES = MAX_CALL_MINUTES; // longest allowed booking; keeps the overlap lookback exact
 const PENDING_EXPIRY_MS = 15 * MIN_MS;
@@ -138,8 +144,18 @@ export const createBooking = mutation({
     }
 
     // Price is always computed here from the host's rate, never from the browser
-    const amountCents = host.ratePerMinuteCents * minutes;
-    const fees = split(amountCents); // must return { platformFeeCents, hostShareCents }
+    // Her rate is in HER currency. The gateway charges in CHARGE_CURRENCY, so
+    // convert once here and keep both numbers on the booking.
+    const rates = await loadRates(ctx);
+    const hostCurrency = currencyForCountry(host.country, rates);
+    const priceMinor = host.ratePerMinuteCents * minutes;
+    const amountCents = convertMinor(
+      priceMinor,
+      hostCurrency,
+      CHARGE_CURRENCY,
+      rates,
+    );
+    const fees = split(amountCents);
 
     const bookingId = await ctx.db.insert("bookings", {
       hostId,

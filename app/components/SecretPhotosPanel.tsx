@@ -7,15 +7,13 @@ import { Check, Lock } from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useMoney } from "@/hooks/useMoney";
 
 // rose-* follows the chosen accent; "accent-card" adds the themed border + glow.
 const solidBtn =
   "rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-50 disabled:hover:bg-rose-600";
 const outlineBtn =
   "rounded-lg border border-rose-500/60 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-rose-600/20 disabled:opacity-50";
-
-const rand = (cents: number): string =>
-  `R${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -39,6 +37,8 @@ export function SecretPhotosPanel({
   hostName: string;
 }): React.JSX.Element | null {
   const data = useQuery(api.secretPhotos.listForHost, { hostId });
+  // Her prices are in HER currency; show() writes them in the viewer's.
+  const { show } = useMoney();
   const createPhotoOrder = useMutation(api.secretPhotos.createPhotoOrder);
   const createBundleOrder = useMutation(api.secretPhotos.createBundleOrder);
   const initCheckout = useAction(api.secretPhotoPayments.initCheckout);
@@ -47,7 +47,7 @@ export function SecretPhotosPanel({
   const [error, setError] = useState("");
 
   if (!data || data.photos.length === 0) return null; // nothing for sale
-  const { photos, bundle } = data;
+  const { photos, bundle, currency } = data;
 
   async function pay(
     key: string,
@@ -91,15 +91,16 @@ export function SecretPhotosPanel({
             </p>
             <p className="text-sm text-neutral-300">
               <span className="font-semibold text-rose-300">
-                {rand(bundle.priceCents)}
+                {show(bundle.priceCents, currency)}
               </span>
               {bundle.individualCents > bundle.priceCents && (
                 <>
                   {" "}
                   <span className="text-neutral-500 line-through">
-                    {rand(bundle.individualCents)}
+                    {show(bundle.individualCents, currency)}
                   </span>{" "}
-                  · save {rand(bundle.individualCents - bundle.priceCents)}
+                  · save{" "}
+                  {show(bundle.individualCents - bundle.priceCents, currency)}
                 </>
               )}
             </p>
@@ -112,7 +113,7 @@ export function SecretPhotosPanel({
           >
             {busyKey === "bundle"
               ? "Redirecting…"
-              : `Buy bundle · ${rand(bundle.priceCents)}`}
+              : `Buy bundle · ${show(bundle.priceCents, currency)}`}
           </button>
         </div>
       )}
@@ -165,7 +166,7 @@ export function SecretPhotosPanel({
                 >
                   {busyKey === key
                     ? "Redirecting…"
-                    : `Unlock · ${rand(p.priceCents)}`}
+                    : `Unlock · ${show(p.priceCents, currency)}`}
                 </button>
               )}
             </div>

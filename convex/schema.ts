@@ -213,6 +213,8 @@ export default defineSchema({
     amountCents: v.number(),
     platformFeeCents: v.number(),
     hostShareCents: v.number(),
+    priceMinor: v.optional(v.number()), // her price, in her currency's minor units
+    priceCurrency: v.optional(v.string()), // e.g. "USD"
     status: v.union(
       v.literal("pending_payment"),
       v.literal("paid"),
@@ -331,6 +333,8 @@ export default defineSchema({
     paymentId: v.optional(v.id("payments")),
     createdAt: v.number(),
     paidAt: v.optional(v.number()),
+    priceMinor: v.optional(v.number()), // her price, in her currency's minor units
+    priceCurrency: v.optional(v.string()), // e.g. "USD"
   })
     .index("by_buyer", ["buyerId"])
     .index("by_host_status", ["hostId", "status"]),
@@ -347,4 +351,10 @@ export default defineSchema({
   })
     .index("by_buyer", ["buyerId"])
     .index("by_photo_buyer", ["photoId", "buyerId"]),
+
+  fxRates: defineTable({
+    base: v.string(), // "USD"
+    rates: v.record(v.string(), v.number()), // units of each currency per 1 USD
+    updatedAt: v.number(),
+  }),
 });

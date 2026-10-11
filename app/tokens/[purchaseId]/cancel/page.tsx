@@ -1,4 +1,5 @@
 // app/tokens/[purchaseId]/cancel/page.tsx
+
 "use client";
 
 import { use } from "react";
@@ -9,7 +10,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAppearance } from "@/app/context/AppearanceContext";
 import { accentBackground } from "@/lib/appearance";
-import { formatRand } from "@/lib/tokenPackages";
+import { CHARGE_CURRENCY } from "@/convex/lib/currency";
+import { useMoney } from "@/hooks/useMoney";
 
 interface PageProps {
   params: Promise<{ purchaseId: string }>;
@@ -19,7 +21,12 @@ export default function TokenPurchaseCancelPage({
   params,
 }: PageProps): React.JSX.Element {
   const { purchaseId } = use(params);
+
   const { theme } = useAppearance();
+  // Package prices are saved in rand (the charge currency); show them in
+  // the viewer's own currency.
+
+  const { show } = useMoney();
 
   const purchase = useQuery(api.tokens.getForPayment, {
     purchaseId: purchaseId as Id<"tokenPurchases">,
@@ -27,6 +34,7 @@ export default function TokenPurchaseCancelPage({
 
   const shell =
     "mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-20 text-center";
+
   const button =
     "mt-4 inline-block rounded-lg px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90";
 
@@ -50,8 +58,8 @@ export default function TokenPurchaseCancelPage({
           This payment already went through
         </h1>
         <p className="text-slate-600 dark:text-stone-400">
-          {purchase.tokens} tokens ({formatRand(purchase.priceCents)}) were
-          added to your balance.
+          {purchase.tokens} tokens ({show(purchase.priceCents, CHARGE_CURRENCY)}
+          ) were added to your balance.
         </p>
         <Link
           href="/settings#tokens"
@@ -72,7 +80,7 @@ export default function TokenPurchaseCancelPage({
       </h1>
       <p className="text-slate-600 dark:text-stone-400">
         {purchase
-          ? `You cancelled the ${purchase.tokens} token package (${formatRand(purchase.priceCents)}). `
+          ? `You cancelled the ${purchase.tokens} token package (${show(purchase.priceCents, CHARGE_CURRENCY)}). `
           : ""}
         You haven&apos;t been charged and your balance is unchanged.
       </p>

@@ -15,6 +15,7 @@ import {
   tzLabel,
 } from "@/convex/lib/schedule";
 import { useViewerTz } from "@/hooks/useViewerTz";
+import { useMoney } from "@/hooks/useMoney";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,15 +25,20 @@ import { AgeGateDialog } from "../AgeGateDialog";
 export function BookCallPanel({
   hostId,
   hostTz,
+  hostCurrency,
   minMinutes,
   ratePerMinuteCents,
 }: {
   hostId: Id<"hosts">;
   hostTz: string;
+  /** The currency her rate is set in (from her country). */
+  hostCurrency: string;
   minMinutes: number;
   ratePerMinuteCents: number;
 }) {
   const viewerTz = useViewerTz();
+  // Her rate is in her currency; show() writes it in the client's.
+  const { show } = useMoney();
   const [minutes, setMinutes] = useState(minMinutes);
   const [startsAt, setStartsAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,7 +115,7 @@ export function BookCallPanel({
                     : "bg-zinc-900/60 text-zinc-100 hover:bg-rose-600/20",
                 )}
               >
-                {m} min · R{((ratePerMinuteCents * m) / 100).toFixed(0)}
+                {m} min · {show(ratePerMinuteCents * m, hostCurrency)}
               </button>
             );
           })}

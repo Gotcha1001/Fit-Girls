@@ -1,7 +1,9 @@
 // convex/secretPhotos.ts
 //
-// A host sells up to 5 "secret photos" for rand, paid through Paystack exactly
-// like a booking: the platform keeps 20%, the host's subaccount gets 80%.
+// A host sells up to 5 "secret photos". She prices them in HER currency (set by
+// her country); clients see them converted into THEIR currency. The order is
+// charged in CHARGE_CURRENCY (rand while Paystack is the test gateway): the
+// platform keeps 20%, the host gets 80%.
 // (Tokens/gifts are a separate system and are NOT used here.)
 //
 //   buyer taps Unlock  ->  createPhotoOrder / createBundleOrder  (pending order)
@@ -23,12 +25,26 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { getCurrentUser, requireCurrentUser } from "./lib/auth";
+import {
+  CHARGE_CURRENCY,
+  convertMinor,
+  currencyForCountry,
+  formatMoney,
+  limitsFor,
+  withinLimits,
+  type Limits,
+  type Rates,
+} from "./lib/currency";
 import { split } from "./lib/fees";
+import { loadRates } from "./lib/fxRates";
 
 export const MAX_ACTIVE_PHOTOS = 5;
-export const MIN_PRICE_CENTS = 1_000; // R10
-export const MAX_PRICE_CENTS = 50_000; // R500
-export const MAX_BUNDLE_PRICE_CENTS = 250_000; // R2 500
+// Limits are defined in rand (CHARGE_CURRENCY) and converted to each girl's
+// currency by limitsFor(), so R10 to R500 becomes about $0.55 to $28 for a girl
+// paid in dollars.
+export const MIN_PRICE_BASE = 1_000; // R10
+export const MAX_PRICE_BASE = 50_000; // R500
+export const MAX_BUNDLE_PRICE_BASE = 250_000; // R2 500
 export const MIN_BUNDLE_PHOTOS = 2;
 const MAX_BYTES = 4 * 1024 * 1024; // each uploaded file
 
@@ -58,6 +74,39 @@ async function requireClient(ctx: MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Her currency, today's rates and her price limits, in one place.
+type Pricing = {
+  currency: string;
+  rates: Rates;
+  photoLimits: Limits;
+  bundleLimits: Limits;
+};
+
+async function pricingFor(
+  ctx: { db: DatabaseReader },
+  host: Doc<"hosts">,
+): Promise<Pricing> {
+  const rates = await loadRates(ctx);
+  const currency = currencyForCountry(host.country, rates);
+  return {
+    currency,
+    rates,
+    photoLimits: limitsFor(MIN_PRICE_BASE, MAX_PRICE_BASE, currency, rates),
+    bundleLimits: limitsFor(
+      MIN_PRICE_BASE,
+      MAX_BUNDLE_PRICE_BASE,
+      currency,
+      rates,
+    ),
+  };
+}
+
+function priceError(what: string, limits: Limits, currency: string): Error {
+  return new Error(
+    `${what} must be between ${formatMoney(limits.min, currency)} and ${formatMoney(limits.max, currency)}.`,
+  );
+}
+
 async function activePhotos(
   ctx: { db: DatabaseReader },
   hostId: Id<"hosts">,
@@ -83,10 +132,6 @@ async function owns(
   return row !== null;
 }
 
-function validPrice(cents: number, max: number): boolean {
-  return Number.isInteger(cents) && cents >= MIN_PRICE_CENTS && cents <= max;
-}
-
 async function checkUpload(
   ctx: MutationCtx,
   id: Id<"_storage">,
@@ -100,7 +145,7 @@ async function checkUpload(
   if (meta.size > MAX_BYTES) throw new Error(`The ${label} is too large.`);
 }
 
-// What a bundle costs THIS buyer. They only pay for photos they don't own yet:
+// All amounts here are in the HOST's currency. What a bundle costs THIS buyer. They only pay for photos they don't own yet:
 //   scaled = bundle price x (photos left / photos in the bundle)
 //   price  = the cheaper of `scaled` and those photos' own prices added up,
 // so a bundle never costs more than buying the photos one by one.
@@ -108,6 +153,7 @@ async function bundleQuote(
   ctx: { db: DatabaseReader },
   host: Doc<"hosts">,
   buyerId: Id<"users">,
+  minPrice: number,
 ): Promise<{ unowned: Doc<"secretPhotos">[]; priceCents: number } | null> {
   const bundle = host.photoBundlePriceCents;
   if (bundle === undefined) return null;
@@ -124,7 +170,7 @@ async function bundleQuote(
   const individually = unowned.reduce((sum, p) => sum + p.priceCents, 0);
   return {
     unowned,
-    priceCents: Math.max(MIN_PRICE_CENTS, Math.min(scaled, individually)),
+    priceCents: Math.max(minPrice, Math.min(scaled, individually)),
   };
 }
 
@@ -161,8 +207,9 @@ export const add = mutation({
     if ((await activePhotos(ctx, host._id)).length >= MAX_ACTIVE_PHOTOS) {
       throw new Error(`You can have up to ${MAX_ACTIVE_PHOTOS} secret photos.`);
     }
-    if (!validPrice(args.priceCents, MAX_PRICE_CENTS)) {
-      throw new Error("Price must be between R10 and R500.");
+    const pricing = await pricingFor(ctx, host);
+    if (!withinLimits(args.priceCents, pricing.photoLimits)) {
+      throw priceError("Price", pricing.photoLimits, pricing.currency);
     }
     await checkUpload(ctx, args.fullStorageId, "photo");
     await checkUpload(ctx, args.previewStorageId, "preview");
@@ -185,8 +232,9 @@ export const updatePrice = mutation({
     if (!photo || photo.hostId !== host._id || photo.removedAt !== undefined) {
       throw new Error("Photo not found");
     }
-    if (!validPrice(priceCents, MAX_PRICE_CENTS)) {
-      throw new Error("Price must be between R10 and R500.");
+    const pricing = await pricingFor(ctx, host);
+    if (!withinLimits(priceCents, pricing.photoLimits)) {
+      throw priceError("Price", pricing.photoLimits, pricing.currency);
     }
     // Past buyers keep what they paid; open orders keep the price they saw.
     await ctx.db.patch(photoId, { priceCents });
@@ -236,8 +284,9 @@ export const setBundlePrice = mutation({
       await ctx.db.patch(host._id, { photoBundlePriceCents: undefined });
       return;
     }
-    if (!validPrice(priceCents, MAX_BUNDLE_PRICE_CENTS)) {
-      throw new Error("Bundle price must be between R10 and R2 500.");
+    const pricing = await pricingFor(ctx, host);
+    if (!withinLimits(priceCents, pricing.bundleLimits)) {
+      throw priceError("Bundle price", pricing.bundleLimits, pricing.currency);
     }
     if ((await activePhotos(ctx, host._id)).length < MIN_BUNDLE_PHOTOS) {
       throw new Error(
@@ -268,24 +317,37 @@ export const listMine = query({
         .collect()
     ).filter((p) => p.removedAt === undefined);
 
+    const pricing = await pricingFor(ctx, host);
     const list = await Promise.all(
       photos.map(async (p) => {
         const sales = await ctx.db
           .query("secretPhotoPurchases")
           .withIndex("by_photo_buyer", (q) => q.eq("photoId", p._id))
           .collect();
+        // Sales are recorded in the charge currency; show her earnings in hers.
+        const earnedCharge = sales.reduce(
+          (sum, s) => sum + s.hostShareCents,
+          0,
+        );
         return {
           _id: p._id,
           priceCents: p.priceCents,
           url: await ctx.storage.getUrl(p.fullStorageId),
           sales: sales.length,
-          // Her 80% (after the platform's 20%), summed over every sale.
-          earnedCents: sales.reduce((sum, s) => sum + s.hostShareCents, 0),
+          earnedCents: convertMinor(
+            earnedCharge,
+            CHARGE_CURRENCY,
+            pricing.currency,
+            pricing.rates,
+          ),
         };
       }),
     );
     return {
       ready: host.status === "approved" && !!host.payoutAccountRef,
+      currency: pricing.currency,
+      photoLimits: pricing.photoLimits,
+      bundleLimits: pricing.bundleLimits,
       photos: list,
       bundlePriceCents: host.photoBundlePriceCents ?? null,
       individualTotalCents: list.reduce((sum, p) => sum + p.priceCents, 0),
@@ -329,8 +391,15 @@ export const listForHost = query({
       }),
     );
 
-    const quote = await bundleQuote(ctx, host, user._id);
+    const pricing = await pricingFor(ctx, host);
+    const quote = await bundleQuote(
+      ctx,
+      host,
+      user._id,
+      pricing.photoLimits.min,
+    );
     return {
+      currency: pricing.currency, // the prices below are in HER currency
       photos: list,
       bundle: quote
         ? {
@@ -363,13 +432,23 @@ export const createPhotoOrder = mutation({
     if (await owns(ctx, photoId, user._id)) {
       throw new Error("You already own this photo");
     }
-    const fees = split(photo.priceCents); // 20% platform / 80% host
+    // Her price is in her currency; the gateway charges in CHARGE_CURRENCY.
+    const { currency, rates } = await pricingFor(ctx, host);
+    const amountCents = convertMinor(
+      photo.priceCents,
+      currency,
+      CHARGE_CURRENCY,
+      rates,
+    );
+    const fees = split(amountCents); // 20% platform / 80% host
     return await ctx.db.insert("secretPhotoOrders", {
       buyerId: user._id,
       hostId: host._id,
       kind: "single",
       items: [{ photoId, priceCents: photo.priceCents }],
-      amountCents: photo.priceCents,
+      priceMinor: photo.priceCents,
+      priceCurrency: currency,
+      amountCents,
       platformFeeCents: fees.platformFeeCents,
       hostShareCents: fees.hostShareCents,
       status: "pending",
@@ -386,10 +465,22 @@ export const createBundleOrder = mutation({
     if (!host || host.status !== "approved" || !host.payoutAccountRef) {
       throw new Error("This host can't sell photos right now");
     }
-    const quote = await bundleQuote(ctx, host, user._id);
+    const pricing = await pricingFor(ctx, host);
+    const quote = await bundleQuote(
+      ctx,
+      host,
+      user._id,
+      pricing.photoLimits.min,
+    );
     if (!quote) throw new Error("This bundle isn't available");
 
-    const fees = split(quote.priceCents);
+    const amountCents = convertMinor(
+      quote.priceCents,
+      pricing.currency,
+      CHARGE_CURRENCY,
+      pricing.rates,
+    );
+    const fees = split(amountCents);
     return await ctx.db.insert("secretPhotoOrders", {
       buyerId: user._id,
       hostId,
@@ -398,7 +489,9 @@ export const createBundleOrder = mutation({
         photoId: p._id,
         priceCents: p.priceCents,
       })),
-      amountCents: quote.priceCents,
+      priceMinor: quote.priceCents,
+      priceCurrency: pricing.currency,
+      amountCents,
       platformFeeCents: fees.platformFeeCents,
       hostShareCents: fees.hostShareCents,
       status: "pending",

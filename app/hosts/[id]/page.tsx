@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { tzLabel } from "@/convex/lib/schedule";
+import { currencyForCountry } from "@/convex/lib/currency";
 import { useNow } from "@/hooks/useNow";
 import { useViewerTz } from "@/hooks/useViewerTz";
 import { GiftPicker } from "@/app/components/GiftPicker";
@@ -62,6 +63,7 @@ export default function HostProfilePage() {
             <BookCallPanel
               hostId={host._id}
               hostTz={host.timezone}
+              hostCurrency={currencyForCountry(host.country)}
               ratePerMinuteCents={host.ratePerMinuteCents}
               minMinutes={host.minMinutes}
             />
