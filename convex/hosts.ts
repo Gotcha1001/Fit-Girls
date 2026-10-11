@@ -10,8 +10,16 @@ import { v } from "convex/values";
 import { getCurrentUser, requireCurrentUser } from "./lib/auth";
 import { isValidTimeZone } from "./lib/schedule";
 import { isValidCountry } from "./lib/timezones";
+import { loadRates } from "./lib/fxRates";
+import {
+  currencyForCountry,
+  formatMoney,
+  limitsFor,
+  withinLimits,
+} from "./lib/currency";
 
-// Rate limits in cents per minute: R5 to R100
+// Rate limits in cents per minute: R5 to R100 (ZAR).
+// Converted to the girl's currency at save time.
 const MIN_RATE = 500;
 const MAX_RATE = 10000;
 
@@ -96,12 +104,16 @@ export const saveProfile = mutation({
       throw new Error("Display name must be 2 to 40 characters");
     if (bio.length > 500)
       throw new Error("Bio must be 500 characters or fewer");
-    if (
-      !Number.isInteger(args.ratePerMinuteCents) ||
-      args.ratePerMinuteCents < MIN_RATE ||
-      args.ratePerMinuteCents > MAX_RATE
-    )
-      throw new Error("Rate must be between R5 and R100 per minute");
+
+    // Convert the fixed ZAR limits (R5–R100) into her currency and validate.
+    const rates = await loadRates(ctx);
+    const currency = currencyForCountry(country, rates);
+    const limits = limitsFor(MIN_RATE, MAX_RATE, currency, rates);
+    if (!withinLimits(args.ratePerMinuteCents, limits)) {
+      throw new Error(
+        `Rate must be between ${formatMoney(limits.min, currency)} and ${formatMoney(limits.max, currency)} per minute`,
+      );
+    }
 
     const existing = await ctx.db
       .query("hosts")
@@ -188,7 +200,7 @@ export const listApproved = query({
       bookable.map(async (h) => ({
         _id: h._id,
         displayName: h.displayName,
-        bio: h.bio, // <-- add this line
+        bio: h.bio,
         avatarUrl: h.avatarId ? await ctx.storage.getUrl(h.avatarId) : null,
         ratePerMinuteCents: h.ratePerMinuteCents,
         minMinutes: h.minMinutes,

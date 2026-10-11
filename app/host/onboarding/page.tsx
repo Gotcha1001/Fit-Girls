@@ -5,6 +5,22 @@ import { useAction, useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  CHARGE_CURRENCY,
+  convertMinor,
+  currencyForCountry,
+  currencySymbol,
+  formatMoney,
+  fromMinor,
+  limitsFor,
+  minorDigits,
+  toMinor,
+} from "@/convex/lib/currency";
+
+// Rate limits are defined in rand and converted to her currency (same numbers
+// as convex/hosts.ts).
+const MIN_RATE_BASE = 500; // R5 per minute
+const MAX_RATE_BASE = 10000; // R100 per minute
 
 type Bank = { name: string; code: string };
 
@@ -34,6 +50,8 @@ const checkbox = "mt-1 accent-rose-500";
 export default function HostOnboarding() {
   const host = useQuery(api.hosts.getMyHost);
   const app = useQuery(api.hostAccess.myApplication);
+  const me = useQuery(api.user.getMe);
+  const fx = useQuery(api.fx.getRates);
   const saveProfile = useMutation(api.hosts.saveProfile);
   const generateUploadUrl = useMutation(api.hosts.generateUploadUrl);
   const setAvatar = useMutation(api.hosts.setAvatar);
@@ -43,7 +61,7 @@ export default function HostOnboarding() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
-  const [rateRand, setRateRand] = useState("10");
+  const [rateRand, setRateRand] = useState(""); // typed in HER currency
   const [over18, setOver18] = useState(false);
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -59,19 +77,27 @@ export default function HostOnboarding() {
   // Fill the form: from her saved profile if she has one, otherwise from what
   // she wrote when she applied. Runs once, so it never overwrites her typing.
   useEffect(() => {
+    // Wait for her country and the exchange rates: they decide her currency.
+    if (!me || !fx) return;
+    const rates = fx.rates;
+    const cur = currencyForCountry(host?.country ?? me.country, rates);
     if (host) {
       setDisplayName(host.displayName);
       setBio(host.bio);
-      setRateRand(String(host.ratePerMinuteCents / 100));
+      setRateRand(fromMinor(host.ratePerMinuteCents, cur));
       setOver18(true); // she already accepted the terms when she first saved
       prefilled.current = true;
     } else if (host === null && app && !prefilled.current) {
       setBio(app.message ?? "");
       // First name only: her full legal name must not become her public name.
       setDisplayName(app.fullName.trim().split(/\s+/)[0] ?? "");
+      // Suggest about R10 a minute, written in her own currency.
+      setRateRand(
+        fromMinor(convertMinor(1000, CHARGE_CURRENCY, cur, rates), cur),
+      );
       prefilled.current = true;
     }
-  }, [host?._id, host === null, app?.fullName]);
+  }, [host?._id, host === null, app?.fullName, me?.country, !!fx]);
 
   // Load banks once a profile exists
   useEffect(() => {
@@ -84,6 +110,13 @@ export default function HostOnboarding() {
 
   if (host === undefined) return <p className="p-8">Loading…</p>;
 
+  // Her currency comes from her country; she sets her rate in it.
+  const rates = fx?.rates;
+  const currency = currencyForCountry(host?.country ?? me?.country, rates);
+  const rateLimits = rates
+    ? limitsFor(MIN_RATE_BASE, MAX_RATE_BASE, currency, rates)
+    : null;
+
   async function onSaveProfile(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -93,7 +126,7 @@ export default function HostOnboarding() {
       await saveProfile({
         displayName,
         bio,
-        ratePerMinuteCents: Math.round(parseFloat(rateRand) * 100),
+        ratePerMinuteCents: toMinor(rateRand, currency),
       });
       setDone("Profile saved.");
     } catch (err: unknown) {
@@ -268,18 +301,29 @@ export default function HostOnboarding() {
 
         <label className="block">
           <span className="mb-1 block text-sm font-medium">
-            Your rate (rand per minute)
+            Your rate ({currency} per minute)
           </span>
-          <input
-            className={field}
-            type="number"
-            min="5"
-            max="100"
-            step="0.5"
-            value={rateRand}
-            onChange={(e) => setRateRand(e.target.value)}
-            required
-          />
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-rose-300">
+              {currencySymbol(currency)}
+            </span>
+            <input
+              className={field}
+              type="number"
+              min={0}
+              step={1 / 10 ** minorDigits(currency)}
+              value={rateRand}
+              onChange={(e) => setRateRand(e.target.value)}
+              required
+            />
+          </div>
+          {rateLimits && (
+            <span className="mt-1 block text-xs text-neutral-500">
+              Allowed: {formatMoney(rateLimits.min, currency)} to{" "}
+              {formatMoney(rateLimits.max, currency)} a minute. Clients in other
+              countries see this converted into their own currency.
+            </span>
+          )}
         </label>
 
         <label className="flex items-start gap-2 text-sm">

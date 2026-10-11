@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ApplicationIdPhotos } from "@/app/components/ApplicationIdPhotos";
+import { currencyForCountry, formatMoney } from "@/convex/lib/currency";
 
 export default function AdminPage(): React.JSX.Element {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -23,6 +24,7 @@ export default function AdminPage(): React.JSX.Element {
     api.admin.listApprovedHosts,
     isAdmin ? {} : "skip",
   );
+  const fx = useQuery(api.fx.getRates);
 
   const issueCode = useAction(api.hostAccess.issueCode);
   const rejectApplication = useMutation(api.hostAccess.rejectApplication);
@@ -210,39 +212,42 @@ export default function AdminPage(): React.JSX.Element {
         {activeHosts?.length === 0 && (
           <p className="text-sm opacity-70">No active girls yet.</p>
         )}
-        {activeHosts?.map((h) => (
-          <div
-            key={h._id}
-            className="flex items-center justify-between gap-3 rounded-xl border p-4"
-          >
-            <div className="min-w-0">
-              <p className="truncate font-semibold">
-                {h.displayName}
-                <span
-                  className={`ml-2 text-xs font-normal ${
-                    h.isOnline ? "text-green-500" : "opacity-60"
-                  }`}
-                >
-                  {h.isOnline ? "Online" : "Offline"}
-                </span>
-              </p>
-              <p className="truncate text-xs opacity-70">{h.email}</p>
-              <p className="text-xs">
-                R{(h.ratePerMinuteCents / 100).toFixed(2)}/min · Bank:{" "}
-                {h.payoutReady
-                  ? `set up (ending ${h.bankLast4 ?? "????"})`
-                  : "NOT set up yet"}
-              </p>
-            </div>
-            <button
-              disabled={busyId === h._id}
-              onClick={() => void onSuspend(h._id, h.displayName)}
-              className="shrink-0 rounded-lg border border-rose-500/50 px-4 py-2 text-sm text-rose-500 disabled:opacity-40"
+        {activeHosts?.map((h) => {
+          const currency = currencyForCountry(h.country, fx?.rates);
+          return (
+            <div
+              key={h._id}
+              className="flex items-center justify-between gap-3 rounded-xl border p-4"
             >
-              Suspend
-            </button>
-          </div>
-        ))}
+              <div className="min-w-0">
+                <p className="truncate font-semibold">
+                  {h.displayName}
+                  <span
+                    className={`ml-2 text-xs font-normal ${
+                      h.isOnline ? "text-green-500" : "opacity-60"
+                    }`}
+                  >
+                    {h.isOnline ? "Online" : "Offline"}
+                  </span>
+                </p>
+                <p className="truncate text-xs opacity-70">{h.email}</p>
+                <p className="text-xs">
+                  {formatMoney(h.ratePerMinuteCents, currency)}/min · Bank:{" "}
+                  {h.payoutReady
+                    ? `set up (ending ${h.bankLast4 ?? "????"})`
+                    : "NOT set up yet"}
+                </p>
+              </div>
+              <button
+                disabled={busyId === h._id}
+                onClick={() => void onSuspend(h._id, h.displayName)}
+                className="shrink-0 rounded-lg border border-rose-500/50 px-4 py-2 text-sm text-rose-500 disabled:opacity-40"
+              >
+                Suspend
+              </button>
+            </div>
+          );
+        })}
       </section>
 
       {pendingHosts && pendingHosts.length > 0 && (

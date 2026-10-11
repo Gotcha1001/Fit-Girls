@@ -6,6 +6,8 @@ import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { LEGACY_TZ } from "@/convex/lib/schedule";
+import { CHARGE_CURRENCY } from "@/convex/lib/currency";
+import { useMoney } from "@/hooks/useMoney";
 import { cn } from "@/lib/utils";
 
 import { DualTime } from "../components/DualTime";
@@ -42,8 +44,6 @@ const STATUS_STYLE: Record<string, string> = {
   refunded: "bg-neutral-500/20 text-neutral-300",
 };
 
-const rand = (cents: number): string => `R${(cents / 100).toFixed(2)}`;
-
 // Clock lives in state (not read during render) and refreshes every 30s,
 // so a booking drops off the list / loses its Join button while the page is open.
 function useNow(intervalMs = 30_000): number {
@@ -67,6 +67,9 @@ function BookingRow({
   /** Upcoming bookings get the themed glow; past ones stay quiet. */
   upcoming: boolean;
 }) {
+  // Amounts are saved in the charge currency; show them in the viewer's own.
+  const { show } = useMoney();
+
   // Bookings made before time zones existed have no snapshot: treat as legacy.
   const hostTz = row.hostTimezone ?? LEGACY_TZ;
   const guestTz = row.guestTimezone ?? hostTz;
@@ -103,12 +106,12 @@ function BookingRow({
         <p className="text-sm text-neutral-400">
           {row.minutes} min
           {side === "guest" && row.amountCents !== undefined && (
-            <> · {rand(row.amountCents)}</>
+            <> · {show(row.amountCents, CHARGE_CURRENCY)}</>
           )}
           {side === "host" &&
             row.hostShareCents !== undefined &&
             (row.status === "paid" || row.status === "completed") && (
-              <> · you earn {rand(row.hostShareCents)}</>
+              <> · you earn {show(row.hostShareCents, CHARGE_CURRENCY)}</>
             )}
         </p>
 

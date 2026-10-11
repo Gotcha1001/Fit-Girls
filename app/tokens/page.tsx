@@ -1,4 +1,5 @@
 // app/tokens/page.tsx
+
 "use client";
 
 import { useState } from "react";
@@ -7,22 +8,29 @@ import { useAction, useQuery } from "convex/react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { useAppearance } from "@/app/context/AppearanceContext";
-import { TokenBalanceCard } from "@/app/components/TokenbalanceCard";
 import { accentBackground, alpha } from "@/lib/appearance";
 import { GIFT_CATALOG, findGiftById } from "@/lib/gifts";
-import { TOKEN_PACKAGES, formatRand } from "@/lib/tokenPackages";
+import { TOKEN_PACKAGES } from "@/lib/tokenPackages";
+import { CHARGE_CURRENCY } from "@/convex/lib/currency";
+import { useMoney } from "@/hooks/useMoney";
+import { TokenBalanceCard } from "../components/TokenbalanceCard";
 
 const PANEL = "rounded-xl border bg-white p-6 dark:bg-[#04070a]";
 
 export default function TokensPage(): React.JSX.Element {
   const { theme } = useAppearance();
+  // Package prices are saved in rand (the charge currency); show them in
+  // the viewer's own currency.
+
+  const { show } = useMoney();
+
   const hex = theme.hex400;
-
   // Clients have no profile: the balance lives on the user (users.tokens).
-  const purchases = useQuery(api.tokens.listMyPurchases);
 
+  const purchases = useQuery(api.tokens.listMyPurchases);
   // convex/tokenPayments.ts -> createPurchase (server-side price) -> Paystack
   // transaction/initialize. Returns the hosted Paystack checkout URL.
+
   const initializePayment = useAction(api.tokenPayments.initialize);
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,6 +42,7 @@ export default function TokensPage(): React.JSX.Element {
   async function handleBuy(packageId: string): Promise<void> {
     setError(null);
     setBusyId(packageId);
+
     try {
       // The action builds callback_url as `${siteUrl}/tokens/<purchaseId>/success`.
       // NEXT_PUBLIC_SITE_URL is the ngrok URL in dev; falls back to the current origin.
@@ -80,9 +89,13 @@ export default function TokensPage(): React.JSX.Element {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {TOKEN_PACKAGES.map((pkg) => {
             const busy = busyId === pkg.id;
-            const perToken = (pkg.priceCents / 100 / pkg.tokens).toFixed(2);
+            const perToken = show(
+              Math.round(pkg.priceCents / pkg.tokens),
+              CHARGE_CURRENCY,
+            );
             const roses = rose ? Math.floor(pkg.tokens / rose.coinCost) : 0;
             const coversRing = ring ? pkg.tokens >= ring.coinCost : false;
+
             return (
               <div
                 key={pkg.id}
@@ -109,10 +122,10 @@ export default function TokensPage(): React.JSX.Element {
                   tokens
                 </span>
                 <span className="mt-1 text-base font-semibold text-slate-800 dark:text-stone-100">
-                  {formatRand(pkg.priceCents)}
+                  {show(pkg.priceCents, CHARGE_CURRENCY)}
                 </span>
                 <span className="text-[11px] text-slate-500 dark:text-stone-400">
-                  R{perToken} per token
+                  {perToken} per token
                 </span>
                 {rose && (
                   <span className="mt-1 text-[11px] text-slate-500 dark:text-stone-400">
@@ -208,7 +221,7 @@ export default function TokensPage(): React.JSX.Element {
                 className="flex items-center justify-between py-2.5 text-sm text-slate-700 dark:text-stone-200"
               >
                 <span>
-                  {p.tokens} tokens · {formatRand(p.priceCents)}
+                  {p.tokens} tokens · {show(p.priceCents, CHARGE_CURRENCY)}
                 </span>
                 <span
                   className={

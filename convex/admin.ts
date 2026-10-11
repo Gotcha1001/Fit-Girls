@@ -41,6 +41,7 @@ export const listPendingHosts = query({
           payoutReady: !!h.payoutAccountRef,
           bankLast4: h.bankLast4 ?? null,
           kycStatus: h.kycStatus,
+          country: h.country ?? null,
         };
       }),
     );
@@ -72,6 +73,7 @@ export const listApprovedHosts = query({
           isOnline: h.isOnline,
           payoutReady: !!h.payoutAccountRef,
           bankLast4: h.bankLast4 ?? null,
+          country: h.country ?? null,
         };
       }),
     );
