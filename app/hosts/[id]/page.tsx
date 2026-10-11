@@ -9,6 +9,7 @@ import { useViewerTz } from "@/hooks/useViewerTz";
 import { GiftPicker } from "@/app/components/GiftPicker";
 import { DualClock } from "@/app/components/DualClock";
 import { BookCallPanel } from "@/app/components/booking/BookCallPanel";
+import { SecretPhotosPanel } from "@/app/components/SecretPhotosPanel";
 
 export default function HostProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -22,8 +23,8 @@ export default function HostProfilePage() {
   if (host === undefined) return <p className="p-8">Loading…</p>;
   if (host === null) return <p className="p-8">Host not found.</p>;
 
-  // Only clients can send gifts (the server enforces this too).
-  const canGift = me?.role === "user" && me.onboardingChoice === "client";
+  // Only clients can send gifts and buy photos (the server enforces both too).
+  const isClient = me?.role === "user" && me.onboardingChoice === "client";
 
   return (
     <main className="mx-auto grid max-w-5xl gap-8 p-6 md:grid-cols-2">
@@ -73,8 +74,15 @@ export default function HostProfilePage() {
         )}
       </div>
 
+      {/* Secret photos: full-width row. Renders nothing if she has none for sale. */}
+      {isClient && (
+        <div className="md:col-span-2">
+          <SecretPhotosPanel hostId={host._id} hostName={host.displayName} />
+        </div>
+      )}
+
       {/* Gifts: stacked under booking on mobile, full-width row below on desktop */}
-      {canGift && (
+      {isClient && (
         <div className="md:col-span-2">
           <GiftPicker toUserId={host.userId} />
         </div>
