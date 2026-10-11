@@ -182,6 +182,7 @@ export default defineSchema({
     isOnline: v.boolean(),
     country: v.optional(v.string()),
     timezone: v.optional(v.string()),
+    photoBundlePriceCents: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_status", ["status"]),
@@ -306,4 +307,44 @@ export default defineSchema({
     reason: v.string(),
     resolved: v.boolean(),
   }),
+
+  secretPhotos: defineTable({
+    hostId: v.id("hosts"),
+    fullStorageId: v.id("_storage"),
+    previewStorageId: v.id("_storage"),
+    priceCents: v.number(),
+    createdAt: v.number(),
+    removedAt: v.optional(v.number()),
+  }).index("by_host", ["hostId"]),
+
+  secretPhotoOrders: defineTable({
+    buyerId: v.id("users"),
+    hostId: v.id("hosts"),
+    kind: v.union(v.literal("single"), v.literal("bundle")),
+    items: v.array(
+      v.object({ photoId: v.id("secretPhotos"), priceCents: v.number() }),
+    ),
+    amountCents: v.number(),
+    platformFeeCents: v.number(),
+    hostShareCents: v.number(),
+    status: v.union(v.literal("pending"), v.literal("paid")),
+    paymentId: v.optional(v.id("payments")),
+    createdAt: v.number(),
+    paidAt: v.optional(v.number()),
+  })
+    .index("by_buyer", ["buyerId"])
+    .index("by_host_status", ["hostId", "status"]),
+
+  secretPhotoPurchases: defineTable({
+    photoId: v.id("secretPhotos"),
+    buyerId: v.id("users"),
+    hostId: v.id("hosts"),
+    orderId: v.id("secretPhotoOrders"),
+    amountCents: v.number(),
+    hostShareCents: v.number(),
+    viaBundle: v.optional(v.boolean()),
+    createdAt: v.number(),
+  })
+    .index("by_buyer", ["buyerId"])
+    .index("by_photo_buyer", ["photoId", "buyerId"]),
 });

@@ -1,6 +1,7 @@
 import { action, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { fulfilSecretPhotoOrder } from "./lib/secretPhotoOrders";
 
 type PaystackInitResponse = {
   status: boolean;
@@ -131,14 +132,10 @@ export const markSucceeded = internalMutation({
         bookingId: booking._id,
       });
     } else {
-      const itemId = ctx.db.normalizeId("galleryItems", payment.refId);
-      if (itemId) {
-        await ctx.db.insert("purchases", {
-          galleryItemId: itemId,
-          buyerId: payment.payerId,
-          paymentId: payment._id,
-        });
-      }
+      // Secret-photo payment (kind "gallery"): mark the order paid and unlock
+      // the photos for the buyer.
+      const orderId = ctx.db.normalizeId("secretPhotoOrders", payment.refId);
+      if (orderId) await fulfilSecretPhotoOrder(ctx, orderId, payment._id);
     }
   },
 });

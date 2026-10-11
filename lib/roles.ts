@@ -22,6 +22,7 @@ function allowedFor(u: AccountUser): string[] {
     return [
       "/hosts",
       "/bookings",
+      "/photos", // NEW: My Photos, and where Paystack sends them back after paying
       "/call",
       "/tokens",
       "/gifts",

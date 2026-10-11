@@ -18,6 +18,8 @@ import {
   CalendarDays,
   Coins,
   Gift,
+  Images,
+  Lock,
   Settings,
   BadgeCheck,
   ShieldCheck,
@@ -40,6 +42,7 @@ interface NavItem {
 const CLIENT_NAV: NavItem[] = [
   { href: "/hosts", label: "Browse Girls", icon: Video },
   { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
+  { href: "/photos", label: "My Photos", icon: Images }, // NEW: unlocked secret photos
   { href: "/tokens", label: "Tokens", icon: Coins },
   { href: "/gifts", label: "Gifts", icon: Gift },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -47,7 +50,8 @@ const CLIENT_NAV: NavItem[] = [
 
 const HOST_NAV: NavItem[] = [
   { href: "/host/onboarding", label: "My Profile", icon: BadgeCheck },
-  { href: "/host/schedule", label: "My Schedule", icon: CalendarDays }, // ← changed
+  { href: "/host/schedule", label: "My Schedule", icon: CalendarDays },
+  { href: "/host/photos", label: "Secret Photos", icon: Lock }, // NEW: upload + prices
   { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
   { href: "/gifts", label: "My Gifts", icon: Gift },
   { href: "/settings", label: "Settings", icon: Settings },
