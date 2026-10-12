@@ -6,6 +6,11 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
+// Theme notes:
+//  - `rose-*` classes are mapped to the user's chosen accent (see globals.css),
+//    so they change with the theme. `pink-*` does not, so it is not used here.
+//  - `accent-card` gives the themed border + glow (glow follows data-glow="on").
+
 interface GiftPickerProps {
   toUserId: Id<"users">; // the host's users._id (not hosts._id)
   onSent?: () => void;
@@ -60,7 +65,7 @@ export function GiftPicker({
   }
 
   return (
-    <section className="w-full rounded-2xl border border-white/10 bg-white/5 p-5 md:p-8">
+    <section className="accent-card w-full rounded-2xl border bg-zinc-900/60 p-5 md:p-8">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -74,7 +79,7 @@ export function GiftPicker({
         </div>
         <Link
           href="/tokens"
-          className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-200 transition hover:border-pink-500/60"
+          className="accent-card inline-flex w-fit shrink-0 items-center gap-2 rounded-full border bg-zinc-900/60 px-4 py-2 text-sm text-neutral-200 transition hover:bg-rose-600/20"
         >
           <span className="text-neutral-400">Balance</span>
           <span className="font-semibold text-white">
@@ -102,10 +107,10 @@ export function GiftPicker({
                 setSentLabel(null);
                 setError(null);
               }}
-              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-5 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 md:py-7 ${
+              className={`accent-card flex flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-5 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 md:py-7 ${
                 isSelected
-                  ? "border-pink-500 bg-pink-500/10 ring-1 ring-pink-500"
-                  : "border-white/10 bg-neutral-900/60 hover:border-pink-500/50 hover:bg-white/5"
+                  ? "bg-rose-600/15 ring-2 ring-rose-500"
+                  : "bg-zinc-900/60 hover:bg-rose-600/10"
               }`}
             >
               <span className="text-5xl leading-none md:text-6xl" aria-hidden>
@@ -117,7 +122,7 @@ export function GiftPicker({
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
                   isSelected
-                    ? "bg-pink-600 text-white"
+                    ? "bg-rose-600 text-white"
                     : "bg-white/10 text-neutral-300"
                 }`}
               >
@@ -138,13 +143,13 @@ export function GiftPicker({
           placeholder={
             selected ? "Add a note (optional)" : "Pick a gift to add a note"
           }
-          className="w-full rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm placeholder:text-neutral-500 focus:border-pink-500 focus:outline-none disabled:opacity-50 md:flex-1"
+          className="w-full rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm placeholder:text-neutral-500 focus:border-rose-500 focus:outline-none disabled:opacity-50 md:flex-1"
         />
 
         {cantAfford ? (
           <Link
             href="/tokens"
-            className="block w-full rounded-full border border-pink-500 px-6 py-3 text-center text-sm font-semibold text-pink-400 transition hover:bg-pink-600 hover:text-white md:w-auto md:min-w-72"
+            className="block w-full rounded-full border border-rose-500 px-6 py-3 text-center text-sm font-semibold text-rose-400 transition hover:bg-rose-600 hover:text-white md:w-auto md:min-w-72"
           >
             Not enough tokens, buy more
           </Link>
@@ -153,7 +158,7 @@ export function GiftPicker({
             type="button"
             onClick={handleSend}
             disabled={!selected || isSending}
-            className="w-full rounded-full bg-pink-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-pink-500 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:min-w-72"
+            className="w-full rounded-full bg-rose-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:min-w-72"
           >
             {isSending
               ? "Sending..."
